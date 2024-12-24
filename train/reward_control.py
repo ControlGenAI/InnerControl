@@ -20,6 +20,7 @@ import pickle
 import random
 import logging
 import argparse
+from omegaconf import OmegaConf
 
 import torch
 import numpy as np
@@ -67,6 +68,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 from utils import image_grid, get_reward_model, get_reward_loss, label_transform, group_random_crop
 
+from helpers import *
 
 from PIL import PngImagePlugin
 MaximumDecompressedsize = 1024
@@ -859,7 +861,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = dataset[split].column_names
+    column_names = dataset['validation'].column_names
 
     # 6. Get the column names for input/target.
     if args.image_column is None:
@@ -992,13 +994,13 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed)
+            dataset["validation"] = dataset["validation"].shuffle(seed=args.seed)
             # rewrite the shuffled dataset on disk as contiguous chunks of data
-            dataset["train"] = dataset["train"].flatten_indices()
-            dataset["train"] = dataset["train"].select(range(args.max_train_samples))
+            dataset["validation"] = dataset["validation"].flatten_indices()
+            dataset["validation"] = dataset["validation"].select(range(args.max_train_samples))
 
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        train_dataset = dataset["validation"].with_transform(preprocess_train)
 
     return dataset, train_dataset
 
@@ -1100,6 +1102,7 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
+   
     reward_model = get_reward_model(args.task_name, args.reward_model_name_or_path)
 
     if args.controlnet_model_name_or_path:
@@ -1266,6 +1269,19 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+
+    #=========================
+    config = {'rg_kwargs': [{'head_type': 'spatial', 
+                             'loss_rescale': 0.5, 
+                             'aggregation_kwargs': {'aggregation_ckpt': '/home/jovyan/shares/SR006.nfs2/konovalova/workspace/readout_guidance/weights/readout_sdv15_spatial_depth.pt'}}]
+                             }
+    edits = get_edits(config, accelerator.device, weight_dtype)
+    init_resnet_func(unet, save_mode='hidden', idxs=None, reset=True)
+    channels = collect_channels(unet)
+
+    #=========================
+
+
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
     unet.to(accelerator.device, dtype=weight_dtype)
@@ -1415,6 +1431,8 @@ def main(args):
                     mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
                 ).sample
 
+               
+
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -1424,7 +1442,7 @@ def main(args):
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
                 pretrain_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-
+               
                 """
                 Rewarding ControlNet
                 """
@@ -1519,6 +1537,29 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
+
+                """
+                Rewarding ControlNet each t
+                """
+                #==========================
+                feats = collect_and_resize_feats(unet, None)
+                aggregation_network = edits[0]["aggregation_network"]
+                obs_feat = feats #???????
+                obs_feat = obs_feat.to(accelerator.device)
+                emb = embed_timestep(unet, latents, timesteps)
+                obs_feat = run_aggregation(obs_feat, aggregation_network, emb).mean(1)
+                timestep_mask = (0 <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 920)
+                obs_feat = torchvision.transforms.functional.resize(obs_feat, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
+                obs_feat = (obs_feat + 1) / 2
+                reward_step_loss = F.mse_loss(obs_feat.float(), labels.float(), reduction="none")
+                reward_step_loss = reward_step_loss.mean(dim=(-1,-2))
+                reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
+                reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
+                loss += reward_step_loss * 1.
+
+
+                #============================
+
 
                 """
                 Losses

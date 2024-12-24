@@ -10,10 +10,10 @@ from torch import Tensor
 from torchvision import transforms
 
 from canny_tools import Canny  # canny edge detection
-from mmengine.hub import get_model  # segmentation
+#from mmengine.hub import get_model  # segmentation
 from transformers import DPTForDepthEstimation  # depth estimation
 
-from mmseg.models.losses.silog_loss import silog_loss
+#from mmseg.models.losses.silog_loss import silog_loss
 from torchvision.transforms import RandomCrop
 
 

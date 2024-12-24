@@ -207,3 +207,5 @@ checkpoints/
 # slurm logs
 *.err
 *.out
+*.npy
+*.pt
