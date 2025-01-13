@@ -153,10 +153,24 @@ def get_edits(config, device, dtype):
     for item in config["rg_kwargs"]:
         #item = OmegaConf.to_container(item, resolve=True)
         aggregation_network, aggregation_config = load_aggregation_network(item["aggregation_kwargs"], device, dtype)
+        # for param in aggregation_network.parameters():
+        #     param.requires_grad = False
         item["aggregation_network"] = aggregation_network
+        #item["aggregation_network"].eval()
         item["aggregation_kwargs"] = {**item["aggregation_kwargs"], **aggregation_config}
         edits.append(item)
     return edits
+
+
+# def get_edits(config, device, dtype):
+#     edits = []
+#     for item in config["rg_kwargs"]:
+#         #item = OmegaConf.to_container(item, resolve=True)
+#         aggregation_network, aggregation_config = load_aggregation_network(item["aggregation_kwargs"], device, dtype)
+#         item["aggregation_network"] = aggregation_network
+#         item["aggregation_kwargs"] = {**item["aggregation_kwargs"], **aggregation_config}
+#         edits.append(item)
+#     return edits
 
 def load_aggregation_network(aggregation_config, device, dtype):
     weights_path = aggregation_config["aggregation_ckpt"]

@@ -21,6 +21,7 @@ import random
 import logging
 import argparse
 from omegaconf import OmegaConf
+import itertools
 
 import torch
 import numpy as np
@@ -139,6 +140,12 @@ def log_validation(
     if args.seed is None:
         generator = None
     else:
+        print('============================================')
+        print('======================================')
+        print('============================================')
+        print('======================================')
+        print(f"Setting {args.seed} for generator")
+        #assert False
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     image_column = args.image_column
@@ -249,7 +256,9 @@ def log_validation(
 
 
     for tracker in accelerator.trackers:
+        print(accelerator.trackers, tracker.name )
         if tracker.name == "tensorboard":
+            print('HELOOOOO')
             for log in image_logs:
                 images = log["images"]
                 ema_images = log["ema_images"]
@@ -833,7 +842,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
             dataset = load_dataset(
                 args.dataset_name,
                 args.dataset_config_name,
-                cache_dir=args.cache_dir,
+                cache_dir='/home/jovyan/.cache/huggingface/hub/datasets--limingcv--MultiGen-20M_depth', #None, args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         else:
@@ -845,7 +854,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
         if args.train_data_dir is not None:
             dataset = load_dataset(
                 args.train_data_dir,
-                cache_dir=args.cache_dir,
+                cache_dir='/home/jovyan/.cache/huggingface/hub/datasets--limingcv--MultiGen-20M_depth', #args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         # See more about loading custom images at
@@ -861,7 +870,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = dataset['validation'].column_names
+    column_names = dataset[split].column_names
 
     # 6. Get the column names for input/target.
     if args.image_column is None:
@@ -994,13 +1003,13 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["validation"] = dataset["validation"].shuffle(seed=args.seed)
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed)
             # rewrite the shuffled dataset on disk as contiguous chunks of data
-            dataset["validation"] = dataset["validation"].flatten_indices()
-            dataset["validation"] = dataset["validation"].select(range(args.max_train_samples))
+            dataset["train"] = dataset["train"].flatten_indices()
+            dataset["train"] = dataset["train"].select(range(args.max_train_samples))
 
         # Set the training transforms
-        train_dataset = dataset["validation"].with_transform(preprocess_train)
+        train_dataset = dataset["train"].with_transform(preprocess_train)
 
     return dataset, train_dataset
 
@@ -1066,6 +1075,12 @@ def main(args):
 
     # If passed along, set the training seed now.
     if args.seed is not None:
+        
+        print('============================================')
+        print('======================================')
+        print('============================================')
+        print('======================================')
+        print(f"Setting {args.seed} for generator")
         set_seed(args.seed)
 
     # Handle the repository creation
@@ -1102,7 +1117,6 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
-   
     reward_model = get_reward_model(args.task_name, args.reward_model_name_or_path)
 
     if args.controlnet_model_name_or_path:
@@ -1122,22 +1136,30 @@ def main(args):
                 weights.pop()
                 model = models[i]
 
-                sub_dir = "controlnet"
-                model.save_pretrained(os.path.join(output_dir, sub_dir))
+                try:
+                    sub_dir = "controlnet"
+                    model.save_pretrained(os.path.join(output_dir, sub_dir))
+                except:
+                    sub_dir = "aggregation"
+                    os.makedirs(os.path.join(output_dir, sub_dir), exist_ok=True)
+                    torch.save(model.state_dict(), os.path.join(output_dir, sub_dir, 'model.ckpt'))
 
                 i -= 1
 
         def load_model_hook(models, input_dir):
             while len(models) > 0:
-                # pop models so that they are not loaded again
-                model = models.pop()
-
-                # load diffusers style into model
-                load_model = ControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
-                model.register_to_config(**load_model.config)
-
-                model.load_state_dict(load_model.state_dict())
-                del load_model
+                try:
+                    # pop models so that they are not loaded again
+                    model = models.pop()
+    
+                    # load diffusers style into model
+                    load_model = ControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
+                    model.register_to_config(**load_model.config)
+    
+                    model.load_state_dict(load_model.state_dict())
+                    del load_model
+                except:
+                    print(model, 'can not be loaded')
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1273,13 +1295,43 @@ def main(args):
     #=========================
     config = {'rg_kwargs': [{'head_type': 'spatial', 
                              'loss_rescale': 0.5, 
-                             'aggregation_kwargs': {'aggregation_ckpt': '/home/jovyan/shares/SR006.nfs2/konovalova/workspace/readout_guidance/weights/readout_sdv15_spatial_depth.pt'}}]
+                             'aggregation_kwargs': {'aggregation_ckpt': '/home/jovyan/konovalova/controlnet_redout/weights/readout_sdv15_spatial_depth.pt'}}]
                              }
-    edits = get_edits(config, accelerator.device, weight_dtype)
+    edits = get_edits(config, accelerator.device, weight_dtype) #weight_dtype)
+
+    for param in edits[0]['aggregation_network'].parameters():
+        #assert param.requires_grad == False
+        print(param.requires_grad)
+        
     init_resnet_func(unet, save_mode='hidden', idxs=None, reset=True)
     channels = collect_channels(unet)
 
     #=========================
+
+    # optimizer = optimizer_class(
+    #     [
+    #         {'params': controlnet.parameters()},
+    #         {'params': edits[0]['aggregation_network'].parameters()}
+    #     ],
+    #     lr=args.learning_rate,
+    #     betas=(args.adam_beta1, args.adam_beta2),
+    #     weight_decay=args.adam_weight_decay,
+    #     eps=args.adam_epsilon,
+    # )
+    # lr_scheduler = get_scheduler(
+    #     args.lr_scheduler,
+    #     optimizer=optimizer,
+    #     num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
+    #     num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+    #     num_cycles=args.lr_num_cycles,
+    #     power=args.lr_power,
+    # )
+
+    # controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+    #     controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler
+    # )
+
+
 
 
     # Move vae, unet and text_encoder to device and cast to weight_dtype
@@ -1344,7 +1396,7 @@ def main(args):
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.resume_from_checkpoint))
-            global_step = int(path.split("-")[1])
+            global_step = int(path.split("-")[-1])
 
             initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
@@ -1364,8 +1416,9 @@ def main(args):
         loss_per_epoch = 0.
         pretrain_loss_per_epoch = 0.
         reward_loss_per_epoch = 0.
+        reward_step_loss_per_epoch = 0.
 
-        train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
+        train_loss, train_pretrain_loss, train_reward_loss, train_reward_step_loss = 0., 0., 0., 0.
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
@@ -1431,8 +1484,6 @@ def main(args):
                     mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
                 ).sample
 
-               
-
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -1442,7 +1493,7 @@ def main(args):
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
                 pretrain_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-               
+
                 """
                 Rewarding ControlNet
                 """
@@ -1537,6 +1588,7 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
+                #assert loss == pretrain_loss
 
                 """
                 Rewarding ControlNet each t
@@ -1549,8 +1601,11 @@ def main(args):
                 emb = embed_timestep(unet, latents, timesteps)
                 obs_feat = run_aggregation(obs_feat, aggregation_network, emb).mean(1)
                 timestep_mask = (0 <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 920)
+                #assert (~timestep_mask).sum() == 0
                 obs_feat = torchvision.transforms.functional.resize(obs_feat, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
                 obs_feat = (obs_feat + 1) / 2
+                # max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
+                # obs_feat = obs_feat / max_values.view(-1, 1, 1)
                 reward_step_loss = F.mse_loss(obs_feat.float(), labels.float(), reduction="none")
                 reward_step_loss = reward_step_loss.mean(dim=(-1,-2))
                 reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
@@ -1568,14 +1623,19 @@ def main(args):
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 avg_pretrain_loss = accelerator.gather(pretrain_loss.repeat(args.train_batch_size)).mean()
                 avg_reward_loss = accelerator.gather(reward_loss.repeat(args.train_batch_size)).mean()
+                avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
 
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
                 train_pretrain_loss += avg_pretrain_loss.item() / args.gradient_accumulation_steps
                 train_reward_loss += avg_reward_loss.item() / args.gradient_accumulation_steps
+                train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
 
                 # Back propagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
+                    # all_parameters = itertools.chain(controlnet.parameters(), edits[0]['aggregation_network'].parameters())
+                    # accelerator.clip_grad_norm_(all_parameters, max_norm=args.max_grad_norm)
+
                     accelerator.clip_grad_norm_(controlnet.parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -1593,6 +1653,7 @@ def main(args):
                         "train_loss": train_loss,
                         "train_pretrain_loss": train_pretrain_loss,
                         "train_reward_loss": train_reward_loss,
+                        "train_readout_step_loss": train_reward_step_loss,
                         "lr": lr_scheduler.get_last_lr()[0]
                     },
                     step=global_step
@@ -1600,8 +1661,10 @@ def main(args):
                 loss_per_epoch += train_loss
                 pretrain_loss_per_epoch += train_pretrain_loss
                 reward_loss_per_epoch += train_reward_loss
+                reward_step_loss_per_epoch += train_reward_step_loss
 
                 train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
+                train_reward_step_loss = 0.
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -1639,6 +1702,7 @@ def main(args):
                 "loss_step": loss.detach().item(),
                 "pretrain_loss_step": pretrain_loss.detach().item(),
                 "reward_loss_step": reward_loss.detach().item(),
+                "train_readout_step_loss": reward_step_loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0]
             }
             progress_bar.set_postfix(**logs)
@@ -1668,6 +1732,7 @@ def main(args):
             "loss_epoch": loss_per_epoch / len(train_dataloader),
             "pretrain_loss_epoch": pretrain_loss_per_epoch / len(train_dataloader),
             "reward_loss_epoch": reward_loss_per_epoch / len(train_dataloader),
+            "reward_step_loss_per_epoch": reward_step_loss_per_epoch / len(train_dataloader),
         }
         progress_bar.set_postfix(**logs)
         accelerator.log(logs, step=global_step)
