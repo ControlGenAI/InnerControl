@@ -13,8 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 import os
-# Set the W&B mode to offline
-os.environ['WANDB_MODE'] = 'offline'
 import math
 import time
 import kornia
@@ -22,8 +20,6 @@ import pickle
 import random
 import logging
 import argparse
-from omegaconf import OmegaConf
-import itertools
 
 import torch
 import numpy as np
@@ -71,7 +67,6 @@ from diffusers.utils.import_utils import is_xformers_available
 
 from utils import image_grid, get_reward_model, get_reward_loss, label_transform, group_random_crop
 
-from helpers import *
 
 from PIL import PngImagePlugin
 MaximumDecompressedsize = 1024
@@ -91,218 +86,6 @@ logger = get_logger(__name__)
 # Offloading state_dict to CPU to avoid GPU memory boom (only used for FSDP training)
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, StateDictType, FullStateDictConfig
 full_state_dict_config = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-
-def make_train_dataset(args, tokenizer, accelerator, split='train'):
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-
-    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # download the dataset.
-    if args.dataset_name is not None:
-        # dataset = load_dataset(
-        #     args.dataset_name,
-        #     args.dataset_config_name,
-        #     cache_dir=args.cache_dir,
-        #     keep_in_memory=args.keep_in_memory,
-        # )
-        if args.dataset_name.count('/') == 1:
-            # Downloading and loading a dataset from the hub.
-            dataset = load_dataset(
-                args.dataset_name,
-                args.dataset_config_name,
-                cache_dir=args.cache_dir,
-                keep_in_memory=args.keep_in_memory,
-            )
-        else:
-            dataset = load_from_disk(
-                dataset_path=args.dataset_name,
-                keep_in_memory=args.keep_in_memory,
-            )
-    else:
-        if args.train_data_dir is not None:
-            dataset = load_dataset(
-                args.train_data_dir,
-                cache_dir=args.cache_dir,
-                keep_in_memory=args.keep_in_memory,
-            )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
-
-    # filter wrong files for MultiGen
-    if args.wrong_ids_file is not None:
-        all_idx = [i for i in range(len(dataset['train']))]
-        exclude_idx = pickle.load(open(args.wrong_ids_file, 'rb'))
-        correct_idx = [item for item in all_idx if item not in exclude_idx]
-        dataset['train'] = dataset['train'].select(correct_idx)
-        print(f"filtering {len(exclude_idx)} rows")
-
-    # Preprocessing the datasets.
-    # We need to tokenize inputs and targets.
-    column_names = dataset[split].column_names
-
-    # 6. Get the column names for input/target.
-    if args.image_column is None:
-        image_column = column_names[0]
-        logger.info(f"image column defaulting to {image_column}")
-    else:
-        image_column = args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-            )
-
-    if args.caption_column is None:
-        caption_column = column_names[1]
-        logger.info(f"caption column defaulting to {caption_column}")
-    else:
-        caption_column = args.caption_column
-        if caption_column not in column_names:
-            raise ValueError(
-                f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-            )
-
-    if args.conditioning_image_column is None:
-        conditioning_image_column = column_names[2]
-        logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
-    elif args.conditioning_image_column in ['canny', 'lineart', 'hed']:
-        conditioning_image_column = image_column
-        logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
-    else:
-        conditioning_image_column = args.conditioning_image_column
-        if conditioning_image_column not in column_names:
-            raise ValueError(
-                f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-            )
-
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[caption_column]:
-            if isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
-                )
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )
-        return inputs.input_ids
-
-    resolution = (args.resolution, args.resolution)
-    image_transforms = transforms.Compose(
-        [
-            transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
-            # transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-
-    conditioning_image_transforms = transforms.Compose(
-        [
-            transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
-            # transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-        ]
-    )
-
-    label_image_transforms = transforms.Compose(
-        [
-            transforms.Resize(resolution, interpolation=transforms.InterpolationMode.NEAREST, antialias=True),
-            # transforms.CenterCrop(args.resolution),
-        ]
-    )
-
-    def preprocess_train(examples):
-        pil_images = [image.convert("RGB") for image in examples[image_column]]
-        images = [image_transforms(image) for image in pil_images]
-
-        if args.conditioning_image_column in ['canny', 'lineart', 'hed']:
-            conditioning_images = images
-        else:
-            conditioning_images = [image.convert("RGB") for image in examples[conditioning_image_column]]
-            conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
-
-        if args.label_column is not None:
-            dtype = torch.long
-            labels = [torch.tensor(np.asarray(label), dtype=dtype).unsqueeze(0) for label in examples[args.label_column]]
-            labels = [label_image_transforms(label) for label in labels]
-
-        # perform groupped random crop for image/conditioning_image/label
-        if args.label_column is not None:
-            grouped_data = [torch.cat([x, y, z]) for (x, y, z) in zip(images, conditioning_images, labels)]
-            grouped_data = group_random_crop(grouped_data, args.resolution)
-
-            images = [x[:3, :, :] for x in grouped_data]
-            conditioning_images = [x[3:6, :, :] for x in grouped_data]
-            labels = [x[6:, :, :] for x in grouped_data]
-
-            # (1, H, W) => (H, w)
-            if args.task_name == "segmentation":
-                labels = [label.squeeze(0) for label in labels]
-
-            examples[args.label_column] = labels
-        else:
-            grouped_data = [torch.cat([x, y]) for (x, y) in zip(images, conditioning_images)]
-            grouped_data = group_random_crop(grouped_data, args.resolution)
-
-            images = [x[:3, :, :] for x in grouped_data]
-            conditioning_images = [x[3:, :, :] for x in grouped_data]
-
-        # Dropout some of features for classifier-free guidance.
-        for i, img_condition in enumerate(conditioning_images):
-            rand_num = random.random()
-            if rand_num < args.image_condition_dropout:
-                conditioning_images[i] = torch.zeros_like(img_condition)
-            elif rand_num < args.image_condition_dropout + args.text_condition_dropout:
-                examples[caption_column][i] = ""
-            elif rand_num < args.image_condition_dropout + args.text_condition_dropout + args.all_condition_dropout:
-                conditioning_images[i] = torch.zeros_like(img_condition)
-                examples[caption_column][i] = ""
-
-        examples["pixel_values"] = images
-        examples["conditioning_pixel_values"] = conditioning_images
-        examples["input_ids"] = tokenize_captions(examples)
-
-        return examples
-
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed)
-            # rewrite the shuffled dataset on disk as contiguous chunks of data
-            dataset["train"] = dataset["train"].flatten_indices()
-            dataset["train"] = dataset["train"].select(range(args.max_train_samples))
-
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
-
-    return dataset, train_dataset
-
-
-def collate_fn(examples):
-    pixel_values = torch.stack([example["pixel_values"] for example in examples])
-    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-
-    conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
-    conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
-
-    input_ids = torch.stack([example["input_ids"] for example in examples])
-
-    if args.label_column is not None:
-        labels = torch.stack([example[args.label_column] for example in examples])
-        labels = labels.to(memory_format=torch.contiguous_format).float()
-    else:
-        labels = conditioning_pixel_values
-
-    return {
-        "pixel_values": pixel_values,
-        "conditioning_pixel_values": conditioning_pixel_values,
-        "input_ids": input_ids,
-        "labels": labels,
-    }
 
 
 def log_validation(
@@ -610,9 +393,6 @@ def parse_args(input_args=None):
         "--grad_scale", type=float, default=1, help="Scale divided for grad loss value."
     )
     parser.add_argument(
-        "--reward_alpha", type=float, default=1, help="Scale divided for grad loss value."
-    )
-    parser.add_argument(
         "--tokenizer_name",
         type=str,
         default=None,
@@ -640,14 +420,8 @@ def parse_args(input_args=None):
             " resolution"
         ),
     )
-    
     parser.add_argument(
         "--guidance_scale",
-        type=float,
-        default=1.0,
-    )
-    parser.add_argument(
-        "--readout_alpha",
         type=float,
         default=1.0,
     )
@@ -795,16 +569,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--max_timestep_rewarding",
-        type=int,
-        default=200,
-    )
-    parser.add_argument(
-        "--min_timestep_readout",
-        type=int,
-        default=0,
-    )
-    parser.add_argument(
-        "--max_timestep_readout",
         type=int,
         default=200,
     )
@@ -1067,7 +831,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
             dataset = load_dataset(
                 args.dataset_name,
                 args.dataset_config_name,
-                cache_dir='/home/jovyan/.cache/huggingface/hub/datasets--limingcv--MultiGen-20M_depth', #None, args.cache_dir,
+                cache_dir=args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         else:
@@ -1079,7 +843,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
         if args.train_data_dir is not None:
             dataset = load_dataset(
                 args.train_data_dir,
-                cache_dir='/home/jovyan/.cache/huggingface/hub/datasets--limingcv--MultiGen-20M_depth', #args.cache_dir,
+                cache_dir=args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         # See more about loading custom images at
@@ -1302,14 +1066,6 @@ def main(args):
     if args.seed is not None:
         set_seed(args.seed)
 
-    # Print the initial seeds
-    print("="*10)
-    print(f"Initial PyTorch seed: {torch.initial_seed()}")
-    print(f"Initial NumPy seed: {np.random.get_state()[1][0]}")
-    print(f"Initial Python random seed: {random.getstate()[1][0]}")
-
-    code_snapshot_callback = CodeSnapshotCallback(save_root=f"code_snapshots{logging_dir}", version=1, use_version=True)
-    code_snapshot_callback.on_fit_start()
     # Handle the repository creation
     if accelerator.is_main_process:
         if args.output_dir is not None:
@@ -1510,48 +1266,6 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-
-    #=========================
-    config = {'rg_kwargs': [{'head_type': 'spatial', 
-                             'loss_rescale': 0.5, 
-                             'aggregation_kwargs': {'aggregation_ckpt': '/home/jovyan/konovalova/controlnet_redout/weights/readout_sdv15_spatial_depth.pt'}}]
-                             }
-    edits = get_edits(config, accelerator.device, weight_dtype)
-    # for param in edits[0]['aggregation_network'].parameters():
-    #     #assert param.requires_grad == False
-    #     print(param.requires_grad)
-        
-    init_resnet_func(unet, save_mode='hidden', idxs=None, reset=True)
-    channels = collect_channels(unet)
-
-    #========================= in case of additional training readout model
-
-    # optimizer = optimizer_class(
-    #     [
-    #         {'params': controlnet.parameters()},
-    #         {'params': edits[0]['aggregation_network'].parameters()}
-    #     ],
-    #     lr=args.learning_rate,
-    #     betas=(args.adam_beta1, args.adam_beta2),
-    #     weight_decay=args.adam_weight_decay,
-    #     eps=args.adam_epsilon,
-    # )
-    # lr_scheduler = get_scheduler(
-    #     args.lr_scheduler,
-    #     optimizer=optimizer,
-    #     num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-    #     num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
-    #     num_cycles=args.lr_num_cycles,
-    #     power=args.lr_power,
-    # )
-
-    # controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-    #     controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler
-    # )
-
-
-
-
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
     unet.to(accelerator.device, dtype=weight_dtype)
@@ -1614,9 +1328,7 @@ def main(args):
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.resume_from_checkpoint))
-            global_step = int(path.split("-")[-1])
-            print('===============')
-            print(global_step)
+            global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
@@ -1636,10 +1348,8 @@ def main(args):
         loss_per_epoch = 0.
         pretrain_loss_per_epoch = 0.
         reward_loss_per_epoch = 0.
-        reward_step_loss_per_epoch = 0.
 
         train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
-        train_reward_step_loss = 0.
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
@@ -1792,7 +1502,7 @@ def main(args):
 
                 # Determine which samples in the current batch need to calculate reward loss
                 timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_rewarding)
-                #assert (~timestep_mask).sum() == 0
+
                 # calculate the reward loss
                 reward_loss = get_reward_loss(outputs, labels, args.task_name, reduction='none')
 
@@ -1809,36 +1519,6 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
-                #assert loss == pretrain_loss
-                
-
-                """
-                Rewarding ControlNet each t
-                """
-                #==========================
-                feats = collect_and_resize_feats(unet, None)
-                aggregation_network = edits[0]["aggregation_network"]
-                obs_feat = feats #???????
-                obs_feat = obs_feat.to(accelerator.device)
-                emb = embed_timestep(unet, latents, timesteps)
-                obs_feat = run_aggregation(obs_feat, aggregation_network, emb).mean(1)
-                timestep_mask = (args.min_timestep_readout <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_readout)
-                #obs_feat = torchvision.transforms.functional.resize(obs_feat, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
-                obs_feat = (obs_feat + 1) / 2
-
-                assert labels.min() >= 0 and labels.max() <= 1
-                assert obs_feat.min() >= 0 and obs_feat.max() <= 1
-                max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
-                obs_feat = obs_feat / max_values.view(-1, 1, 1)
-                reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                reward_step_loss = reward_step_loss.mean(dim=(-1,-2))
-                reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
-                reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
-                loss += reward_step_loss * args.readout_alpha
-
-
-                #============================
-
 
                 """
                 Losses
@@ -1847,12 +1527,10 @@ def main(args):
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 avg_pretrain_loss = accelerator.gather(pretrain_loss.repeat(args.train_batch_size)).mean()
                 avg_reward_loss = accelerator.gather(reward_loss.repeat(args.train_batch_size)).mean()
-                avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
 
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
                 train_pretrain_loss += avg_pretrain_loss.item() / args.gradient_accumulation_steps
                 train_reward_loss += avg_reward_loss.item() / args.gradient_accumulation_steps
-                train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
 
                 # Back propagate
                 accelerator.backward(loss)
@@ -1874,7 +1552,6 @@ def main(args):
                         "train_loss": train_loss,
                         "train_pretrain_loss": train_pretrain_loss,
                         "train_reward_loss": train_reward_loss,
-                        "train_readout_step_loss": train_reward_step_loss,
                         "lr": lr_scheduler.get_last_lr()[0]
                     },
                     step=global_step
@@ -1882,10 +1559,8 @@ def main(args):
                 loss_per_epoch += train_loss
                 pretrain_loss_per_epoch += train_pretrain_loss
                 reward_loss_per_epoch += train_reward_loss
-                reward_step_loss_per_epoch += train_reward_step_loss
 
                 train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
-                train_reward_step_loss = 0.
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -1923,7 +1598,6 @@ def main(args):
                 "loss_step": loss.detach().item(),
                 "pretrain_loss_step": pretrain_loss.detach().item(),
                 "reward_loss_step": reward_loss.detach().item(),
-                "train_readout_step_loss": reward_step_loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0]
             }
             progress_bar.set_postfix(**logs)
@@ -1949,12 +1623,10 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-
         logs = {
             "loss_epoch": loss_per_epoch / len(train_dataloader),
             "pretrain_loss_epoch": pretrain_loss_per_epoch / len(train_dataloader),
             "reward_loss_epoch": reward_loss_per_epoch / len(train_dataloader),
-            "reward_step_loss_per_epoch": reward_step_loss_per_epoch / len(train_dataloader),
         }
         progress_bar.set_postfix(**logs)
         accelerator.log(logs, step=global_step)

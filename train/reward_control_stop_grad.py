@@ -610,9 +610,6 @@ def parse_args(input_args=None):
         "--grad_scale", type=float, default=1, help="Scale divided for grad loss value."
     )
     parser.add_argument(
-        "--reward_alpha", type=float, default=1, help="Scale divided for grad loss value."
-    )
-    parser.add_argument(
         "--tokenizer_name",
         type=str,
         default=None,
@@ -640,14 +637,8 @@ def parse_args(input_args=None):
             " resolution"
         ),
     )
-    
     parser.add_argument(
         "--guidance_scale",
-        type=float,
-        default=1.0,
-    )
-    parser.add_argument(
-        "--readout_alpha",
         type=float,
         default=1.0,
     )
@@ -795,16 +786,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--max_timestep_rewarding",
-        type=int,
-        default=200,
-    )
-    parser.add_argument(
-        "--min_timestep_readout",
-        type=int,
-        default=0,
-    )
-    parser.add_argument(
-        "--max_timestep_readout",
         type=int,
         default=200,
     )
@@ -1524,7 +1505,7 @@ def main(args):
     init_resnet_func(unet, save_mode='hidden', idxs=None, reset=True)
     channels = collect_channels(unet)
 
-    #========================= in case of additional training readout model
+    #=========================
 
     # optimizer = optimizer_class(
     #     [
@@ -1636,10 +1617,9 @@ def main(args):
         loss_per_epoch = 0.
         pretrain_loss_per_epoch = 0.
         reward_loss_per_epoch = 0.
-        reward_step_loss_per_epoch = 0.
+        #reward_step_loss_per_epoch = 0.
 
         train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
-        train_reward_step_loss = 0.
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
@@ -1791,7 +1771,9 @@ def main(args):
                 labels = [x.to(accelerator.device) for x in labels] if isinstance(labels, list) else labels.to(accelerator.device)
 
                 # Determine which samples in the current batch need to calculate reward loss
-                timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_rewarding)
+                #timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_rewarding)
+                #timestep_mask = (0 <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 500)
+                timestep_mask = (0 <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 920)
                 #assert (~timestep_mask).sum() == 0
                 # calculate the reward loss
                 reward_loss = get_reward_loss(outputs, labels, args.task_name, reduction='none')
@@ -1808,33 +1790,37 @@ def main(args):
 
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
-                loss = pretrain_loss + reward_loss * args.grad_scale
-                #assert loss == pretrain_loss
+                loss = pretrain_loss + reward_loss * 0 #args.grad_scale
+                assert loss == pretrain_loss
                 
 
                 """
                 Rewarding ControlNet each t
                 """
                 #==========================
-                feats = collect_and_resize_feats(unet, None)
-                aggregation_network = edits[0]["aggregation_network"]
-                obs_feat = feats #???????
-                obs_feat = obs_feat.to(accelerator.device)
-                emb = embed_timestep(unet, latents, timesteps)
-                obs_feat = run_aggregation(obs_feat, aggregation_network, emb).mean(1)
-                timestep_mask = (args.min_timestep_readout <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_readout)
-                #obs_feat = torchvision.transforms.functional.resize(obs_feat, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
-                obs_feat = (obs_feat + 1) / 2
-
-                assert labels.min() >= 0 and labels.max() <= 1
-                assert obs_feat.min() >= 0 and obs_feat.max() <= 1
-                max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
-                obs_feat = obs_feat / max_values.view(-1, 1, 1)
-                reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                reward_step_loss = reward_step_loss.mean(dim=(-1,-2))
-                reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
-                reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
-                loss += reward_step_loss * args.readout_alpha
+                # feats = collect_and_resize_feats(unet, None)
+                # aggregation_network = edits[0]["aggregation_network"]
+                # obs_feat = feats #???????
+                # obs_feat = obs_feat.to(accelerator.device)
+                # emb = embed_timestep(unet, latents, timesteps)
+                # obs_feat = run_aggregation(obs_feat, aggregation_network, emb).mean(1)
+                # #timestep_mask = (0 <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 200)
+                # #timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_rewarding)
+                # #assert (~timestep_mask).sum() == 0
+                # timestep_mask = (0 <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 500)
+                # #assert (~timestep_mask).sum() == 0
+                # #obs_feat = torchvision.transforms.functional.resize(obs_feat, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
+                # obs_feat = (obs_feat + 1) / 2
+                # #labels_feats = batch["labels"].mean(dim=1)
+                # assert labels.min() >= 0 and labels.max() <= 1
+                # assert obs_feat.min() >= 0 and obs_feat.max() <= 1
+                # max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
+                # obs_feat = obs_feat / max_values.view(-1, 1, 1)
+                # reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                # reward_step_loss = reward_step_loss.mean(dim=(-1,-2))
+                # reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
+                # reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
+                # loss += reward_step_loss * 20.
 
 
                 #============================
@@ -1847,12 +1833,12 @@ def main(args):
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 avg_pretrain_loss = accelerator.gather(pretrain_loss.repeat(args.train_batch_size)).mean()
                 avg_reward_loss = accelerator.gather(reward_loss.repeat(args.train_batch_size)).mean()
-                avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
+                #avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
 
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
                 train_pretrain_loss += avg_pretrain_loss.item() / args.gradient_accumulation_steps
                 train_reward_loss += avg_reward_loss.item() / args.gradient_accumulation_steps
-                train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
+                #train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
 
                 # Back propagate
                 accelerator.backward(loss)
@@ -1874,7 +1860,7 @@ def main(args):
                         "train_loss": train_loss,
                         "train_pretrain_loss": train_pretrain_loss,
                         "train_reward_loss": train_reward_loss,
-                        "train_readout_step_loss": train_reward_step_loss,
+                        #"train_readout_step_loss": train_reward_step_loss,
                         "lr": lr_scheduler.get_last_lr()[0]
                     },
                     step=global_step
@@ -1882,10 +1868,10 @@ def main(args):
                 loss_per_epoch += train_loss
                 pretrain_loss_per_epoch += train_pretrain_loss
                 reward_loss_per_epoch += train_reward_loss
-                reward_step_loss_per_epoch += train_reward_step_loss
+                #reward_step_loss_per_epoch += train_reward_step_loss
 
                 train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
-                train_reward_step_loss = 0.
+                #train_reward_step_loss = 0.
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -1923,7 +1909,7 @@ def main(args):
                 "loss_step": loss.detach().item(),
                 "pretrain_loss_step": pretrain_loss.detach().item(),
                 "reward_loss_step": reward_loss.detach().item(),
-                "train_readout_step_loss": reward_step_loss.detach().item(),
+                #"train_readout_step_loss": reward_step_loss.detach().item(),
                 "lr": lr_scheduler.get_last_lr()[0]
             }
             progress_bar.set_postfix(**logs)
@@ -1954,7 +1940,7 @@ def main(args):
             "loss_epoch": loss_per_epoch / len(train_dataloader),
             "pretrain_loss_epoch": pretrain_loss_per_epoch / len(train_dataloader),
             "reward_loss_epoch": reward_loss_per_epoch / len(train_dataloader),
-            "reward_step_loss_per_epoch": reward_step_loss_per_epoch / len(train_dataloader),
+            #"reward_step_loss_per_epoch": reward_step_loss_per_epoch / len(train_dataloader),
         }
         progress_bar.set_postfix(**logs)
         accelerator.log(logs, step=global_step)

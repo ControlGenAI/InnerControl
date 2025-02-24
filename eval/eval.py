@@ -291,6 +291,7 @@ def main(args):
                 images = [image] + [condition] + images
                 images = [F.pil_to_tensor(x) for x in images]
                 images = make_grid(images, nrow=len(images))
+            
 
             show(images)
             plt.tight_layout()

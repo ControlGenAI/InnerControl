@@ -24,6 +24,74 @@ import einops
 from omegaconf import OmegaConf
 from aggregation_network import AggregationNetwork
 
+import os
+import shutil
+import subprocess
+from functools import wraps
+from accelerate import Accelerator
+
+def rank_zero_only(fn):
+    @wraps(fn)
+    def wrapped_fn(*args, **kwargs):
+        accelerator = Accelerator()
+        if accelerator.is_local_main_process:
+            return fn(*args, **kwargs)
+    return wrapped_fn
+
+class CodeSnapshotCallback:
+    def __init__(self, save_root, version=None, use_version=True):
+        self.save_root = save_root
+        self.version = version
+        self.use_version = use_version
+        self.savedir = self.get_savedir()
+
+    def get_savedir(self):
+        if self.use_version and self.version is not None:
+            return os.path.join(self.save_root, f"version_{self.version}")
+        return self.save_root
+
+    def get_file_list(self):
+        exclude_dirs = ['MultiGen', 'MultiGen_correct', 'work_dirs', 'weights', 'wandb', 'code_snapshots']
+        try:
+            files = set(
+                subprocess.check_output(
+                    'git ls-files -- ":!:load/*"', shell=True
+                ).splitlines()
+            ) | set(
+                subprocess.check_output(
+                    "git ls-files --others --exclude-standard", shell=True
+                ).splitlines()
+            )
+            #print(files)
+            try:
+                filtered_files = [f for f in files if not any(f.startswith(d) for d in exclude_dirs)]
+                print(filtered_files)
+            except:
+                exclude_dirs_bytes = [d.encode() for d in exclude_dirs]
+                filtered_files = [f for f in files if not any(f.startswith(d) for d in exclude_dirs_bytes)]
+                print(filtered_files)
+            #assert False
+            return [b.decode() for b in filtered_files]
+        except subprocess.CalledProcessError:
+            rank_zero_warn(
+                "Code snapshot is not saved. Please make sure you have git installed and are in a git repository."
+            )
+            return []
+    def save_code_snapshot(self):
+        os.makedirs(self.savedir, exist_ok=True)
+        for f in self.get_file_list():
+            if not os.path.exists(f) or os.path.isdir(f):
+                continue
+            os.makedirs(os.path.join(self.savedir, os.path.dirname(f)), exist_ok=True)
+            shutil.copyfile(f, os.path.join(self.savedir, f))
+
+    def on_fit_start(self):
+        try:
+            self.save_code_snapshot()
+        except Exception as e:
+            rank_zero_warn(f"Code snapshot is not saved. Error: {e}")
+
+
 def init_resnet_func(
     unet,
     save_mode="",

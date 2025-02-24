@@ -203,6 +203,10 @@ humanart/
 reward_model/
 None/
 checkpoints/
+MultiGen_correct/
+MultiGen/
+code_snapshots/
+
 
 # slurm logs
 *.err

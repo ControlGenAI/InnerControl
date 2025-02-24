@@ -10,7 +10,7 @@ from torchmetrics.multimodal.clip_score import CLIPScore
 
 parser = argparse.ArgumentParser(description="Evaluate CLIP-Score")
 parser.add_argument('--generated_image_dir', type=str, required=True)
-parser.add_argument('--dataset', type=str, required=True, default="limingcv/MultiGen-20M_canny_eval")
+parser.add_argument('--dataset', type=str, default="limingcv/MultiGen-20M_depth_eval")
 args = parser.parse_args()
 
 dataset = load_dataset(args.dataset, cache_dir='data/huggingface_datasets', split='validation')
