@@ -1,7 +1,7 @@
 compute_environment: LOCAL_MACHINE
 distributed_type: MULTI_GPU
 downcast_bf16: 'no'
-gpu_ids: 2,1,
+gpu_ids: 2,3
 machine_rank: 0
 main_training_function: main
 mixed_precision: fp16

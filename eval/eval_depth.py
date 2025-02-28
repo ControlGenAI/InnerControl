@@ -14,8 +14,8 @@ def compute_per_pixel_mse(root_dir):
     img_dir = os.path.join(root_dir, 'images')
 
     accs = []
-    bar = tqdm(range(len(os.listdir(anno_dir)[:])))
-    for anno in os.listdir(anno_dir)[:]:
+    bar = tqdm(range(len(os.listdir(anno_dir)[:20])))
+    for anno in os.listdir(anno_dir)[:20]:
         label_path = os.path.join(anno_dir, anno)
         image_paths = [os.path.join(
             img_dir, f'group_{i}', anno.replace('.png', '_depth.png')

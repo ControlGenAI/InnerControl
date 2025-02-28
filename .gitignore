@@ -206,6 +206,7 @@ checkpoints/
 MultiGen_correct/
 MultiGen/
 code_snapshots/
+weights/
 
 
 # slurm logs

@@ -986,6 +986,31 @@ def parse_args(input_args=None):
         help="Number of images to be generated for each `--validation_image`, `--validation_prompt` pair",
     )
     parser.add_argument(
+        "--optimize_readout",
+        type=bool,
+        default=False,
+        help="If additionally optimize readout models",
+    )
+    parser.add_argument(
+        "--readout_path",
+        type=str,
+        default='/home/jovyan/konovalova/controlnet_redout/weights/checkpoint_step_5000.pt',
+        help="Path to pretrained reaout model",
+    )
+    parser.add_argument(
+        "--readout_type",
+        type=str,
+        default='attn',
+        choices=['attn', 'conv'],
+        help="Model is based on attn or conv",
+    )
+    parser.add_argument(
+        "--normalize",
+        type=bool,
+        default=True,
+        help="If additionally normalize readout heads",
+    )
+    parser.add_argument(
         "--validation_steps",
         type=int,
         default=100,
@@ -1056,18 +1081,13 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
     if args.dataset_name is not None:
-        # dataset = load_dataset(
-        #     args.dataset_name,
-        #     args.dataset_config_name,
-        #     cache_dir=args.cache_dir,
-        #     keep_in_memory=args.keep_in_memory,
-        # )
+
         if args.dataset_name.count('/') == 1:
             # Downloading and loading a dataset from the hub.
             dataset = load_dataset(
                 args.dataset_name,
                 args.dataset_config_name,
-                cache_dir='/home/jovyan/.cache/huggingface/hub/datasets--limingcv--MultiGen-20M_depth', #None, args.cache_dir,
+                cache_dir=args.cache_dir, #None, args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         else:
@@ -1079,7 +1099,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
         if args.train_data_dir is not None:
             dataset = load_dataset(
                 args.train_data_dir,
-                cache_dir='/home/jovyan/.cache/huggingface/hub/datasets--limingcv--MultiGen-20M_depth', #args.cache_dir,
+                cache_dir=args.cache_dir, #args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         # See more about loading custom images at
@@ -1451,14 +1471,27 @@ def main(args):
         ema_controlnet.to(accelerator.device)
 
     # Optimizer creation
-    # optimized_parameters = list(controlnet.parameters()) + list(reward_model.parameters()) + list(unet.parameters())
-    optimizer = optimizer_class(
-        controlnet.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    
+    if not args.optimize_readout:
+        optimizer = optimizer_class(
+            controlnet.parameters(),
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+    else:
+        print("Additionally optimize readout heads")
+        optimizer = optimizer_class(
+            [
+                {'params': controlnet.parameters()},
+                {'params': edits[0]['aggregation_network'].parameters()}
+            ],
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
 
     dataset, train_dataset = make_train_dataset(args, tokenizer, accelerator)
 
@@ -1486,21 +1519,32 @@ def main(args):
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
-        optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
-        num_cycles=args.lr_num_cycles,
-        power=args.lr_power,
-    )
+    if not args.optimize_readout:
+        lr_scheduler = get_scheduler(
+            args.lr_scheduler,
+            optimizer=optimizer,
+            num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
+            num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+            num_cycles=args.lr_num_cycles,
+            power=args.lr_power,
+        )
+        # Prepare others after preparing the model
+        controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            controlnet, optimizer, train_dataloader, lr_scheduler
+        )
+    else:
+        lr_scheduler = get_scheduler(
+            args.lr_scheduler,
+            optimizer=optimizer,
+            num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
+            num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+            num_cycles=args.lr_num_cycles,
+            power=args.lr_power,
+        )
 
-    # unet, reward_model = accelerator.prepare(unet, reward_model)
-
-    # Prepare others after preparing the model
-    controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        controlnet, optimizer, train_dataloader, lr_scheduler
-    )
+        controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler
+        )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -1514,43 +1558,15 @@ def main(args):
     #=========================
     config = {'rg_kwargs': [{'head_type': 'spatial', 
                              'loss_rescale': 0.5, 
-                             'aggregation_kwargs': {'aggregation_ckpt': '/home/jovyan/konovalova/controlnet_redout/weights/readout_sdv15_spatial_depth.pt'}}]
+                             'aggregation_kwargs': {'aggregation_ckpt': args.readout_path,
+                             }}]
                              }
     edits = get_edits(config, accelerator.device, weight_dtype)
-    # for param in edits[0]['aggregation_network'].parameters():
-    #     #assert param.requires_grad == False
-    #     print(param.requires_grad)
-        
-    init_resnet_func(unet, save_mode='hidden', idxs=None, reset=True)
-    channels = collect_channels(unet)
-
-    #========================= in case of additional training readout model
-
-    # optimizer = optimizer_class(
-    #     [
-    #         {'params': controlnet.parameters()},
-    #         {'params': edits[0]['aggregation_network'].parameters()}
-    #     ],
-    #     lr=args.learning_rate,
-    #     betas=(args.adam_beta1, args.adam_beta2),
-    #     weight_decay=args.adam_weight_decay,
-    #     eps=args.adam_epsilon,
-    # )
-    # lr_scheduler = get_scheduler(
-    #     args.lr_scheduler,
-    #     optimizer=optimizer,
-    #     num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-    #     num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
-    #     num_cycles=args.lr_num_cycles,
-    #     power=args.lr_power,
-    # )
-
-    # controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-    #     controlnet, edits[0]['aggregation_network'], optimizer, train_dataloader, lr_scheduler
-    # )
-
-
-
+    init_resnet_func(unet, save_mode='hidden', idxs=None, reset=True, aggragation_type=args.readout_type)
+    if args.readout_type == 'attn':
+        channels = collect_channels(unet)
+    else:
+        channels = collect_channels_conv(unet)
 
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
@@ -1615,7 +1631,7 @@ def main(args):
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.resume_from_checkpoint))
             global_step = int(path.split("-")[-1])
-            print('===============')
+            print(f'====== global step =========')
             print(global_step)
 
             initial_global_step = global_step
@@ -1757,6 +1773,7 @@ def main(args):
 
                     # map label into [0, 1]
                     labels = batch["labels"].mean(dim=1)  # (N, 3, H, W) -> (N, H, W)
+                    labels_readout =  batch["labels"]
                     max_values = labels.view(labels.size(0), -1).max(dim=1)[0]
                     labels = labels / max_values.view(-1, 1, 1)
 
@@ -1793,6 +1810,7 @@ def main(args):
                 # Determine which samples in the current batch need to calculate reward loss
                 timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_rewarding)
                 #assert (~timestep_mask).sum() == 0
+                
                 # calculate the reward loss
                 reward_loss = get_reward_loss(outputs, labels, args.task_name, reduction='none')
 
@@ -1809,29 +1827,35 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
-                #assert loss == pretrain_loss
+                assert loss == pretrain_loss
                 
 
                 """
                 Rewarding ControlNet each t
                 """
                 #==========================
-                feats = collect_and_resize_feats(unet, None)
+                obs_feat = collect_and_resize_feats(unet, None, collection_type=args.readout_type)
                 aggregation_network = edits[0]["aggregation_network"]
-                obs_feat = feats #???????
-                obs_feat = obs_feat.to(accelerator.device)
                 emb = embed_timestep(unet, latents, timesteps)
-                obs_feat = run_aggregation(obs_feat, aggregation_network, emb).mean(1)
+                obs_feat = run_aggregation(obs_feat, aggregation_network, emb)
                 timestep_mask = (args.min_timestep_readout <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_readout)
-                #obs_feat = torchvision.transforms.functional.resize(obs_feat, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
                 obs_feat = (obs_feat + 1) / 2
-
                 assert labels.min() >= 0 and labels.max() <= 1
                 assert obs_feat.min() >= 0 and obs_feat.max() <= 1
-                max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
-                obs_feat = obs_feat / max_values.view(-1, 1, 1)
-                reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                reward_step_loss = reward_step_loss.mean(dim=(-1,-2))
+
+                if args.normalize:
+                    obs_feat = obs_feat.mean(1)
+                    max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
+                    obs_feat = obs_feat / max_values.view(-1, 1, 1)
+                    reward_step_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(labels.unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                else:
+                    reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels_readout, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+
+                #reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels.unsqueeze(1).repeat(1,3,1,1), (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                #reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels_readout, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                
+                reward_step_loss = reward_step_loss.mean(dim=(-1,-2, -3))
+
                 reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
                 reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss += reward_step_loss * args.readout_alpha
