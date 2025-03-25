@@ -207,6 +207,7 @@ MultiGen_correct/
 MultiGen/
 code_snapshots/
 weights/
+MultiGen_small_tests/
 
 
 # slurm logs

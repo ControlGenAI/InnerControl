@@ -17,7 +17,7 @@ dataset = load_dataset(args.dataset, cache_dir='data/huggingface_datasets', spli
 metric = CLIPScore(model_name_or_path="openai/clip-vit-base-patch16").cuda()
 
 bar = tqdm(range(len(dataset)), desc=f"Evaluating {args.dataset}")
-
+print(args.generated_image_dir)
 rewards = []
 for idx in range(len(dataset)):
     data = dataset[idx]
@@ -29,5 +29,9 @@ for idx in range(len(dataset)):
     metric.update(torch.stack(images), [prompt]*4)
 
     bar.update(1)
+    if idx > 49:
+        break
 
 print(metric.score / metric.n_samples)
+print()
+print()

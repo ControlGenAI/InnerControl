@@ -262,6 +262,10 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
             elif rand_num < args.image_condition_dropout + args.text_condition_dropout + args.all_condition_dropout:
                 conditioning_images[i] = torch.zeros_like(img_condition)
                 examples[caption_column][i] = ""
+            # if random.random() < args.image_conditioning_augmentation:
+            #     assert False
+            #     noise = torch.randn_like(img_condition) * args.noise_std
+            #     conditioning_images[i] += noise
 
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
@@ -640,7 +644,7 @@ def parse_args(input_args=None):
             " resolution"
         ),
     )
-    
+ 
     parser.add_argument(
         "--guidance_scale",
         type=float,
@@ -648,6 +652,11 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--readout_alpha",
+        type=float,
+        default=1.0,
+    )
+    parser.add_argument(
+        "--readout_beta",
         type=float,
         default=1.0,
     )
@@ -957,6 +966,18 @@ def parse_args(input_args=None):
         help="Probability of abandon all the conditions.",
     )
     parser.add_argument(
+        "--image_conditioning_augmentation",
+        type=float,
+        default=0,
+        help="Probability of abandon all the conditions.",
+    )
+    parser.add_argument(
+        "--noise_std",
+        type=float,
+        default=0.1,
+        help="Probability of abandon all the conditions.",
+    )
+    parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
@@ -1087,7 +1108,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
             dataset = load_dataset(
                 args.dataset_name,
                 args.dataset_config_name,
-                cache_dir=args.cache_dir, #None, args.cache_dir,
+                cache_dir=args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         else:
@@ -1099,7 +1120,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
         if args.train_data_dir is not None:
             dataset = load_dataset(
                 args.train_data_dir,
-                cache_dir=args.cache_dir, #args.cache_dir,
+                cache_dir=args.cache_dir,
                 keep_in_memory=args.keep_in_memory,
             )
         # See more about loading custom images at
@@ -1367,7 +1388,12 @@ def main(args):
     reward_model = get_reward_model(args.task_name, args.reward_model_name_or_path)
 
     if args.controlnet_model_name_or_path:
+        print("++++++++++++++++++++++++++++++++++++++++++++++")
+        print("HHHHHH")
         logger.info("Loading existing controlnet weights")
+        print(args.controlnet_model_name_or_path)
+        print("++++++++++++++++++++++++++++++++++++++++++++++")
+        print("HHHHHH")
         controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from unet")
@@ -1481,6 +1507,7 @@ def main(args):
             eps=args.adam_epsilon,
         )
     else:
+        assert False
         print("Additionally optimize readout heads")
         optimizer = optimizer_class(
             [
@@ -1630,6 +1657,8 @@ def main(args):
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.resume_from_checkpoint))
+            print(path)
+            print(path.split("-")[-1])
             global_step = int(path.split("-")[-1])
             print(f'====== global step =========')
             print(global_step)
@@ -1653,9 +1682,14 @@ def main(args):
         pretrain_loss_per_epoch = 0.
         reward_loss_per_epoch = 0.
         reward_step_loss_per_epoch = 0.
+        reward_output_loss_per_epoch = 0
+        train_reward_output_step_loss_1_per_epoch = 0.
 
         train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
         train_reward_step_loss = 0.
+        train_reward_output_step_loss = 0.
+        train_reward_output_step_loss_1 = 0.
+
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
@@ -1773,7 +1807,6 @@ def main(args):
 
                     # map label into [0, 1]
                     labels = batch["labels"].mean(dim=1)  # (N, 3, H, W) -> (N, H, W)
-                    labels_readout =  batch["labels"]
                     max_values = labels.view(labels.size(0), -1).max(dim=1)[0]
                     labels = labels / max_values.view(-1, 1, 1)
 
@@ -1809,8 +1842,7 @@ def main(args):
 
                 # Determine which samples in the current batch need to calculate reward loss
                 timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_rewarding)
-                #assert (~timestep_mask).sum() == 0
-                
+
                 # calculate the reward loss
                 reward_loss = get_reward_loss(outputs, labels, args.task_name, reduction='none')
 
@@ -1827,6 +1859,7 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
+                #assert args.grad_scale == 0.5
                 assert loss == pretrain_loss
                 
 
@@ -1847,21 +1880,43 @@ def main(args):
                     obs_feat = obs_feat.mean(1)
                     max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
                     obs_feat = obs_feat / max_values.view(-1, 1, 1)
+                    
                     reward_step_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(labels.unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                    
+                    #reward_output_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.unsqueeze(1).float(), (64, 64), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(obs_feat_unet.detach().unsqueeze(1), (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                    reward_output_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(outputs.detach().unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                    reward_output_loss_1 = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.detach().unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(outputs.unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
+                
                 else:
+                    assert False
                     reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels_readout, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
 
-                #reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels.unsqueeze(1).repeat(1,3,1,1), (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                #reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels_readout, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                
                 reward_step_loss = reward_step_loss.mean(dim=(-1,-2, -3))
+                reward_output_loss = reward_output_loss.mean(dim=(-1,-2,-3))
+                reward_output_loss_1 = reward_output_loss_1.mean(dim=(-1,-2,-3))
 
                 reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
                 reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
-                loss += reward_step_loss * args.readout_alpha
+
+                reward_output_loss = reward_output_loss.reshape_as(timestep_mask)
+                reward_output_loss = (timestep_mask * reward_output_loss).sum() / (timestep_mask.sum() + 1e-10)
+
+                reward_output_loss_1 = reward_output_loss_1.reshape_as(timestep_mask)
+                reward_output_loss_1 = (timestep_mask * reward_output_loss_1).sum() / (timestep_mask.sum() + 1e-10)
+
+
+                
+                #print(reward_step_loss_consistency, reward_step_loss)
+                loss += reward_step_loss * args.readout_alpha #+ reward_step_loss_consistency * 10.
+
+                #loss += reward_output_loss * 0 #args.readout_beta
+                #loss += reward_output_loss_1 * args.readout_beta
+
+                
 
 
                 #============================
+                #assert loss == pretrain_loss + reward_loss * args.grad_scale
 
 
                 """
@@ -1872,11 +1927,17 @@ def main(args):
                 avg_pretrain_loss = accelerator.gather(pretrain_loss.repeat(args.train_batch_size)).mean()
                 avg_reward_loss = accelerator.gather(reward_loss.repeat(args.train_batch_size)).mean()
                 avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
+                avg_reward_output_step_loss = accelerator.gather(reward_output_loss.repeat(args.train_batch_size)).mean()
+                avg_reward_output_step_loss_1 = accelerator.gather(reward_output_loss_1.repeat(args.train_batch_size)).mean()
+
 
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
                 train_pretrain_loss += avg_pretrain_loss.item() / args.gradient_accumulation_steps
                 train_reward_loss += avg_reward_loss.item() / args.gradient_accumulation_steps
                 train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
+                train_reward_output_step_loss += avg_reward_output_step_loss.item() / args.gradient_accumulation_steps
+                train_reward_output_step_loss_1 += avg_reward_output_step_loss_1.item() / args.gradient_accumulation_steps
+
 
                 # Back propagate
                 accelerator.backward(loss)
@@ -1899,6 +1960,8 @@ def main(args):
                         "train_pretrain_loss": train_pretrain_loss,
                         "train_reward_loss": train_reward_loss,
                         "train_readout_step_loss": train_reward_step_loss,
+                        "train_readout_output_loss": train_reward_output_step_loss,
+                        "train_reward_output_step_loss_1": train_reward_output_step_loss_1,
                         "lr": lr_scheduler.get_last_lr()[0]
                     },
                     step=global_step
@@ -1907,9 +1970,14 @@ def main(args):
                 pretrain_loss_per_epoch += train_pretrain_loss
                 reward_loss_per_epoch += train_reward_loss
                 reward_step_loss_per_epoch += train_reward_step_loss
+                reward_output_loss_per_epoch += train_reward_output_step_loss
+                train_reward_output_step_loss_1_per_epoch += train_reward_output_step_loss_1
+
 
                 train_loss, train_pretrain_loss, train_reward_loss = 0., 0., 0.
                 train_reward_step_loss = 0.
+                train_reward_output_step_loss = 0.
+                train_reward_output_step_loss_1 = 0.
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -1973,12 +2041,12 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-
         logs = {
             "loss_epoch": loss_per_epoch / len(train_dataloader),
             "pretrain_loss_epoch": pretrain_loss_per_epoch / len(train_dataloader),
             "reward_loss_epoch": reward_loss_per_epoch / len(train_dataloader),
             "reward_step_loss_per_epoch": reward_step_loss_per_epoch / len(train_dataloader),
+            "reward_output_loss_per_epoch": reward_output_loss_per_epoch / len(train_dataloader),
         }
         progress_bar.set_postfix(**logs)
         accelerator.log(logs, step=global_step)

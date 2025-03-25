@@ -53,7 +53,7 @@ class CodeSnapshotCallback:
         return self.save_root
 
     def get_file_list(self):
-        exclude_dirs = ['MultiGen', 'MultiGen_correct', 'work_dirs', 'weights', 'wandb', 'code_snapshots']
+        exclude_dirs = ['MultiGen', 'MultiGen_small_tests', 'MultiGen_correct', 'work_dirs', 'weights', 'wandb', 'code_snapshots']
         try:
             files = set(
                 subprocess.check_output(
@@ -415,6 +415,7 @@ def get_edits(config, device, dtype):
 
 def load_aggregation_network(aggregation_config, device, dtype):
     weights_path = aggregation_config["aggregation_ckpt"]
+    weights_path = '/home/jovyan/konovalova/controlnet_redout/weights/checkpoint_step_5000.pt'
     state_dict = torch.load(weights_path)
     config = state_dict["config"]
     aggregation_kwargs = config.get("aggregation_kwargs", {})
@@ -429,6 +430,7 @@ def load_aggregation_network(aggregation_config, device, dtype):
         **aggregation_kwargs
     )
     aggregation_network.load_state_dict(state_dict["aggregation_network"], strict=True)
+    #aggregation_network.load_state_dict(torch.load(aggregation_config["aggregation_ckpt"]))
     aggregation_network = aggregation_network.to(device).to(dtype)
     return aggregation_network, config
 

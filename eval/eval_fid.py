@@ -13,6 +13,7 @@ def main(real_image_path, generated_image_path):
             dataset_res=512,
             batch_size=128
         )
+        print(score)
     # Report the average FID score
     print(score / 4)
 

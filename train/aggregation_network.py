@@ -223,7 +223,7 @@ class AggregationNetwork(nn.Module):
             # Chunk the batch according the layer
             # Account for looping if there are multiple timesteps
             end = start + self.feature_dims[i % len(self.feature_dims)]
-            feats = batch[:, start:end, :, :]
+            feats = batch[:, start:end, :, :].contiguous()
             start = end
             # Downsample the number of channels and weight the layer
             if type(bottleneck_layer) is not nn.Sequential:
@@ -231,6 +231,7 @@ class AggregationNetwork(nn.Module):
             else:
                 bottlenecked_feature = bottleneck_layer(feats)
             bottlenecked_feature = mixing_weights[i] * bottlenecked_feature
+            bottlenecked_feature = bottlenecked_feature.contiguous()
             if output_feature is None:
                 output_feature = bottlenecked_feature
             else:

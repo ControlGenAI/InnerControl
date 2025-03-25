@@ -34,6 +34,8 @@ MegaByte = 2**20
 PngImagePlugin.MAX_TEXT_CHUNK = MaximumDecompressedsize * MegaByte
 Image.MAX_IMAGE_PIXELS = None
 
+#from stable_diffusion_controlnet_with_readout import StableDiffusionControlNetPipeline
+
 
 def seed_torch(seed=1):
     random.seed(seed)
@@ -74,11 +76,13 @@ def main(args):
             dataset_path=args.dataset_name,
             split=args.dataset_split
         )
-
+    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    print()
     print(f"Loading pre-trained weights from {args.model_path}")
 
     # main_process_first: Avoid repeated downloading of models for all processes
     with distributed_state.main_process_first():
+        
         # load pre-trained model
         if args.model == 'controlnet':
             controlnet = ControlNetModel.from_pretrained(args.model_path, torch_dtype=torch.float16)
@@ -131,7 +135,9 @@ def main(args):
     save_dir = os.path.join(args.output_dir, args.dataset_name.split('/')[-1], args.dataset_split, args.model_path.replace('/', '_'))
 
     save_dir = save_dir + '_' + str(args.guidance_scale) + '-' + str(args.num_inference_steps)
+    save_dir = save_dir[:]
     if distributed_state.is_main_process:
+        
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
             os.makedirs(os.path.join(save_dir, "images"))
@@ -155,7 +161,7 @@ def main(args):
         start_time = time.time()
 
     # split dataset into multiple processes and gpus, each process corresponds to a gpu
-    with distributed_state.split_between_processes(list(range(len(dataset)))) as local_idxs:
+    with distributed_state.split_between_processes(list(range(1000))) as local_idxs:
 
         print(f"{distributed_state.process_index} has {len(local_idxs)} images")
 
@@ -214,12 +220,20 @@ def main(args):
                     negative_prompt=['worst quality, low quality'] *  args.batch_size
                 ).images
             else:
+
+                os.makedirs(f"{save_dir}/readout/group_{0}/", exist_ok=True)
+                readout_params = {
+                    "readout_save": f"{save_dir}/readout/group_{0}/{uid}",
+                    "readout_path": "/home/jovyan/konovalova/controlnet_redout/weights/checkpoint_step_5000.pt",
+                    "readout_type": "attn",
+                }
                 images = pipe(
                     prompt=prompts,
                     image=conditions,
                     num_inference_steps=args.num_inference_steps,
                     guidance_scale=args.guidance_scale,
-                    negative_prompt=['worst quality, low quality'] *  args.batch_size
+                    negative_prompt=['worst quality, low quality'] *  args.batch_size,
+                    **readout_params,
                 ).images
 
             if args.task_name == 'canny':
@@ -297,6 +311,7 @@ def main(args):
             plt.tight_layout()
             plt.savefig(f'{save_dir}/visualization/{uid}.png', bbox_inches='tight', dpi=512)
             plt.clf()
+            #assert False
 
     distributed_state.wait_for_everyone()
     if distributed_state.is_main_process:
