@@ -12,7 +12,9 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-
+import os
+# Set the W&B mode to offline
+os.environ['WANDB_MODE'] = 'offline'
 import argparse
 import logging
 import math

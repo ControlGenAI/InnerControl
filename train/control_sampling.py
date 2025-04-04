@@ -63,6 +63,7 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
+    
 )
 from diffusers.training_utils import EMAModel
 from diffusers.optimization import get_scheduler
@@ -80,8 +81,6 @@ PngImagePlugin.MAX_TEXT_CHUNK = MaximumDecompressedsize * MegaByte
 Image.MAX_IMAGE_PIXELS = None
 
 
-os.environ['HF_DATASETS_OFFLINE ']= "1"
-
 if is_wandb_available():
     import wandb
 
@@ -93,6 +92,75 @@ logger = get_logger(__name__)
 # Offloading state_dict to CPU to avoid GPU memory boom (only used for FSDP training)
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, StateDictType, FullStateDictConfig
 full_state_dict_config = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+
+def sampling_process(unet, latents, scheduler, timesteps, device, prompt_embeds, tokenizer=None, text_encoder=None, guidance_scale=1., depth=None, controlnet=None, num_inference_steps=50, weight_dtype=None):
+    # Initialize noise
+    # scheduler.set_timesteps(num_inference_steps, device=device)
+    # timesteps = scheduler.timesteps
+    
+    # Create uncond embeddings for classifier free guidance
+    if guidance_scale > 1.0:
+        # Properly tokenize empty prompt
+        uncond_input = tokenizer(
+            [""],  # Empty string for negative prompt
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids.to(device)
+        
+        uncond_embeddings = text_encoder(uncond_input)[0].repeat(prompt_embeds.shape[0],1,1)
+        context = torch.cat([uncond_embeddings, prompt_embeds])
+    
+    for i, t in (enumerate(timesteps)):
+        # Expand latents for classifier free guidance
+        latent_model_input = latents
+        if guidance_scale > 1.0:
+            latent_model_input = torch.cat([latents] * 2)
+            
+        if controlnet is not None:
+            down_block_res_samples, mid_block_res_sample = controlnet(
+                latent_model_input,
+                t,
+                encoder_hidden_states=context if guidance_scale > 1.0 else prompt_embeds,
+                controlnet_cond=depth,
+                return_dict=False,
+            )
+            noise_pred = unet(
+                latent_model_input,
+                t,
+                encoder_hidden_states=context if guidance_scale > 1.0 else prompt_embeds,
+                timestep_cond=None,
+                down_block_additional_residuals=[
+                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
+                    ],
+                mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
+            )[0]
+
+        else:
+            # Predict noise
+              # Enable gradients for noise prediction
+            noise_pred = unet(
+                latent_model_input,
+                t,
+                encoder_hidden_states=context if guidance_scale > 1.0 else prompt_embeds,
+                timestep_cond=None,
+                return_dict=False,
+            )[0]
+
+        # Apply classifier-free guidance
+        if guidance_scale > 1.0:
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+        # Detach noise prediction for stop gradient effect as mentioned in the paper
+        if i != 0:
+            noise_pred = noise_pred.detach()
+        
+        # Update the image prediction using scheduler
+        latents = scheduler.step(noise_pred, t, latents).prev_sample
+
+    return latents
 
 def make_train_dataset(args, tokenizer, accelerator, split='train'):
     # Get the datasets: you can either provide your own training and evaluation files (see below)
@@ -264,11 +332,7 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
             elif rand_num < args.image_condition_dropout + args.text_condition_dropout + args.all_condition_dropout:
                 conditioning_images[i] = torch.zeros_like(img_condition)
                 examples[caption_column][i] = ""
-            # if random.random() < args.image_conditioning_augmentation:
-            #     assert False
-            #     noise = torch.randn_like(img_condition) * args.noise_std
-            #     conditioning_images[i] += noise
-
+                
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
         examples["input_ids"] = tokenize_captions(examples)
@@ -1138,6 +1202,9 @@ def make_train_dataset(args, tokenizer, accelerator, split='train'):
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
+
+    print(dataset)
+    print(dataset.keys())
     column_names = dataset[split].column_names
 
     # 6. Get the column names for input/target.
@@ -1379,6 +1446,24 @@ def main(args):
 
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny", 
+    torch_dtype=torch.float16
+)
+
+    # Load SD1.5 with ControlNet
+    pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        controlnet=controlnet,
+        torch_dtype=torch.float16
+    )
+
+    # Set UniPC Scheduler with 30 steps
+    sampling_scheduler = pipe.scheduler
+    del pipe
+    #sampling_scheduler = UniPCMultistepScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
+    sampling_scheduler.set_timesteps(10, device=accelerator.device)
+    steps = sampling_scheduler.timesteps #
     text_encoder = text_encoder_cls.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
@@ -1697,11 +1782,6 @@ def main(args):
             with accelerator.accumulate(controlnet):
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]  # text condition
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)  # image condition
-                
-                a = random.random()
-                p = 1
-                if a < p:
-                    controlnet_image_permuted = controlnet_image.clone()[torch.randperm(controlnet_image.size(0))]
 
                 # This step is necessary. It took us a long time to find out this issue
                 # The input of the canny/hed/lineart model does not require normalization of the image
@@ -1742,14 +1822,6 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-               
-                if a < p:
-                    controlnet_image = torch.cat([controlnet_image, controlnet_image_permuted])
-                    noisy_latents = torch.cat([noisy_latents, noisy_latents])
-                    encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states])
-                    timesteps = torch.cat([timesteps, timesteps])
-
-
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
@@ -1769,16 +1841,6 @@ def main(args):
                     ],
                     mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
                 ).sample
-
-                if a < p: 
-                    batch_size = int(model_pred.shape[0] // 2)
-                    model_pred_augmented = model_pred[batch_size:]
-                    model_pred = model_pred[:batch_size]
-                    noisy_latents = noisy_latents[:batch_size]
-                    encoder_hidden_states = encoder_hidden_states[:batch_size]
-                    timesteps = timesteps[:batch_size]
-
-
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1884,81 +1946,95 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
-                assert args.grad_scale == 0.5
+
+                #assert args.grad_scale == 1
                 #assert loss == pretrain_loss
                 
 
-                """
-                Rewarding ControlNet each t
-                """
-                #==========================
-                obs_feat = collect_and_resize_feats(unet, None, collection_type=args.readout_type)
-                aggregation_network = edits[0]["aggregation_network"]
-                if a < p:
-                    emb = embed_timestep(unet, torch.cat([latents, latents]), torch.cat([timesteps, timesteps]))
-                else:
-                    emb = embed_timestep(unet, latents, timesteps)
-                obs_feat = run_aggregation(obs_feat, aggregation_network, emb)
-                timestep_mask = (args.min_timestep_readout <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= args.max_timestep_readout)
-                timestep_mask_consistency = (args.min_timestep_readout <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 300)
-                assert args.max_timestep_readout == 920
-                obs_feat = (obs_feat + 1) / 2
-                assert labels.min() >= 0 and labels.max() <= 1
-                assert obs_feat.min() >= 0 and obs_feat.max() <= 1
-
-                if args.normalize:
-                    obs_feat = obs_feat.mean(1)
-                    max_values = obs_feat.view(obs_feat.size(0), -1).max(dim=1)[0]
-                    obs_feat = obs_feat / max_values.view(-1, 1, 1)
-
-                    if a < p:
-                        obs_feat_permuted = obs_feat[batch_size:]
-                        obs_feat = obs_feat[:batch_size]
-
-                    reward_step_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(labels.unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                    
-                    if a < p:
-                        reward_output_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat_permuted.unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(obs_feat.detach().unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                        #print(reward_output_loss)
-                    else:
-                        reward_output_loss = torch.zeros_like(reward_step_loss)
-                    #reward_output_loss = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(outputs.detach().unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                    reward_output_loss_1 = F.mse_loss(torchvision.transforms.functional.resize(obs_feat.detach().unsqueeze(1).float(), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR),  torchvision.transforms.functional.resize(outputs.unsqueeze(1), (512, 512), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                
-                else:
-                    assert False
-                    reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels_readout, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-
-                #reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels.unsqueeze(1).repeat(1,3,1,1), (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                #reward_step_loss = F.mse_loss(obs_feat.float(),  torchvision.transforms.functional.resize(labels_readout, (64, 64), interpolation=transforms.InterpolationMode.BILINEAR).float(), reduction="none")
-                
-                reward_step_loss = reward_step_loss.mean(dim=(-1,-2, -3))
-                reward_output_loss = reward_output_loss.mean(dim=(-1,-2,-3))
-                reward_output_loss_1 = reward_output_loss_1.mean(dim=(-1,-2,-3))
-
-                reward_step_loss = reward_step_loss.reshape_as(timestep_mask)
-                reward_step_loss = (timestep_mask * reward_step_loss).sum() / (timestep_mask.sum() + 1e-10)
-
-                reward_output_loss = reward_output_loss.reshape_as(timestep_mask_consistency)
-                reward_output_loss = (timestep_mask_consistency * reward_output_loss).sum() / (timestep_mask_consistency.sum() + 1e-10)
-
-                reward_output_loss_1 = reward_output_loss_1.reshape_as(timestep_mask)
-                reward_output_loss_1 = (timestep_mask * reward_output_loss_1).sum() / (timestep_mask.sum() + 1e-10)
-
-
-                
-                #print(reward_step_loss_consistency, reward_step_loss)
-                loss += reward_step_loss * args.readout_alpha #+ reward_step_loss_consistency * 10.
-
-                if a < p:
-                    loss += reward_output_loss * args.readout_beta
-                    assert args.readout_beta == 10
-                #loss += reward_output_loss_1 * args.readout_beta
-
-                
-
+               
 
                 #============================
+                
+                
+                
+                
+                latents_pred = []
+                good_samples = 0
+                idxs = []
+                for z, t in enumerate(timesteps):
+                    
+                    tttt = sampling_scheduler.timesteps[sampling_scheduler.timesteps < t]
+                    if len(tttt) != 0:
+                        idxs.append(z)
+                        latents_pred.append(sampling_process(unet, 
+                                                            noisy_latents,
+                                                            sampling_scheduler,
+                                                            tttt,
+                                                            accelerator.device,
+                                                            encoder_hidden_states,
+                                                            depth=controlnet_image, 
+                                                            controlnet=controlnet,
+                                                            weight_dtype=weight_dtype)
+                                            )
+
+                latents_pred = torch.stack(latents_pred)
+
+                # Map the denoised latents into RGB images
+                latents_pred = 1 / vae.config.scaling_factor * latents_pred
+                image = vae.decode(pred_original_sample.to(weight_dtype)).sample
+                image = (image / 2 + 0.5).clamp(0, 1)
+
+                # image normalization, depends on different reward models
+                # This step is necessary. It took us a long time to find out this issue
+                if args.task_name == 'depth':
+                    image = torchvision.transforms.functional.resize(image, (384, 384))
+                    image = normalize(image, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                elif args.task_name in ['canny', 'lineart', 'hed']:
+                    pass
+                else:
+                    image = normalize(image, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+                # reward model inference
+                if args.task_name == 'canny':
+                    outputs = reward_model(image.to(accelerator.device), low_threshold, high_threshold)
+                else:
+                    outputs = reward_model(image.to(accelerator.device))
+
+                # normalize the predicted depth to (0, 1]
+                if type(outputs) == transformers.modeling_outputs.DepthEstimatorOutput:
+
+                    # map predicted depth into [0, 1]
+                    outputs = outputs.predicted_depth
+                    outputs = torchvision.transforms.functional.resize(outputs, (args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR)
+                    max_values = outputs.view(args.train_batch_size, -1).amax(dim=1, keepdim=True).view(args.train_batch_size, 1, 1)
+                    outputs = outputs / max_values
+
+                # kornia.filters.canny return a tuple with (magnitude, edge)
+                elif args.task_name == 'canny':
+                    outputs = outputs[0]   # (B, 1, H, W)
+                elif args.task_name in ['lineart', 'hed']:
+                    pass
+                else:
+                    labels = batch["labels"]
+
+                # Avoid nan loss when using FP16 (happen in softmax)
+                # FP32 and BF16 both work well
+                if image.dtype == torch.float16:
+                    if isinstance(outputs, torch.Tensor):
+                        outputs = outputs.to(torch.float32)
+                        labels = labels.to(torch.float32)
+                    elif isinstance(outputs, list):
+                        outputs = [x.to(torch.float32) for x in outputs]
+                        labels = [x.to(torch.float32) for x in labels]
+                    else:
+                        raise NotImplementedError
+
+                # Determine which samples in the current batch need to calculate reward loss
+                timestep_mask = (args.min_timestep_rewarding <= timesteps.reshape(-1, 1)) & (timesteps.reshape(-1, 1) <= 920)
+
+                reward_step_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
+                loss += reward_step_loss * args.grad_scale
+                #assert loss == pretrain_loss + reward_loss * args.grad_scale
 
 
                 """
@@ -1968,17 +2044,17 @@ def main(args):
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 avg_pretrain_loss = accelerator.gather(pretrain_loss.repeat(args.train_batch_size)).mean()
                 avg_reward_loss = accelerator.gather(reward_loss.repeat(args.train_batch_size)).mean()
-                avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
-                avg_reward_output_step_loss = accelerator.gather(reward_output_loss.repeat(args.train_batch_size)).mean()
-                avg_reward_output_step_loss_1 = accelerator.gather(reward_output_loss_1.repeat(args.train_batch_size)).mean()
+                #avg_reward_step_loss = accelerator.gather(reward_step_loss.repeat(args.train_batch_size)).mean()
+                #avg_reward_output_step_loss = accelerator.gather(reward_output_loss.repeat(args.train_batch_size)).mean()
+                #avg_reward_output_step_loss_1 = accelerator.gather(reward_output_loss_1.repeat(args.train_batch_size)).mean()
 
 
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
                 train_pretrain_loss += avg_pretrain_loss.item() / args.gradient_accumulation_steps
                 train_reward_loss += avg_reward_loss.item() / args.gradient_accumulation_steps
-                train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
-                train_reward_output_step_loss += avg_reward_output_step_loss.item() / args.gradient_accumulation_steps
-                train_reward_output_step_loss_1 += avg_reward_output_step_loss_1.item() / args.gradient_accumulation_steps
+                #train_reward_step_loss += avg_reward_step_loss.item() / args.gradient_accumulation_steps
+                #train_reward_output_step_loss += avg_reward_output_step_loss.item() / args.gradient_accumulation_steps
+                #train_reward_output_step_loss_1 += avg_reward_output_step_loss_1.item() / args.gradient_accumulation_steps
 
 
                 # Back propagate

@@ -5,7 +5,7 @@ import torch
 import numpy as np
 import torchvision.transforms.functional as F
 import argparse
-import cv2
+#import cv2
 
 from matplotlib import pyplot as plt
 from torchvision.utils import make_grid
@@ -161,7 +161,7 @@ def main(args):
         start_time = time.time()
 
     # split dataset into multiple processes and gpus, each process corresponds to a gpu
-    with distributed_state.split_between_processes(list(range(1000))) as local_idxs:
+    with distributed_state.split_between_processes(list(range(len(dataset)))) as local_idxs:
 
         print(f"{distributed_state.process_index} has {len(local_idxs)} images")
 

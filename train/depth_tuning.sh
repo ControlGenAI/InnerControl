@@ -1,21 +1,18 @@
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export CONTROLNET_DIR="lllyasviel/control_v11f1p_sd15_depth"
 export REWARDMODEL_DIR="Intel/dpt-hybrid-midas"
-export OUTPUT_DIR="work_dirs/MultiGen/permuted_0_2"
+export OUTPUT_DIR="work_dirs/reward_model/MultiGen/test"
 export HF_HUB_CACHE='/workspace-SR008.fs2/test/datasets'
 
-
 accelerate launch --config_file "train/config.yml" \
- --main_process_port=23256 train/reward_control_permuted.py \
+ --main_process_port=23256 train/train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --controlnet_model_name_or_path=$CONTROLNET_DIR \
- --reward_model_name_or_path=$REWARDMODEL_DIR \
  --output_dir=$OUTPUT_DIR \
- --task_name="depth" \
  --dataset_name="limingcv/MultiGen-20M_depth" \
  --caption_column="text" \
  --conditioning_image_column="control_depth" \
- --cache_dir '/workspace-SR008.fs2/test/datasets/datasets--limingcv--MultiGen-20M_depth' \
+ --cache_dir '/workspace-SR008.fs2/test/datasets' \
  --resolution=512 \
  --train_batch_size=8 \
  --gradient_accumulation_steps=4 \
@@ -27,15 +24,5 @@ accelerate launch --config_file "train/config.yml" \
  --lr_scheduler="constant_with_warmup" \
  --lr_warmup_steps=10 \
  --checkpointing_steps=1000 \
- --grad_scale=0.5 \
- --use_ema \
- --readout_alpha=0.5 \
- --readout_beta=10 \
- --seed 42 \
- --validation_steps=1000 \
- --timestep_sampling_start=0 \
- --timestep_sampling_end=1000 \
- --min_timestep_rewarding=0 \
- --max_timestep_rewarding=200 \
- --readout_path '/home/jovyan/shares/SR008.fs2/test/controlnet_redout/weights/checkpoint_step_5000.pt' \
- --max_timestep_readout=920 \
+ --validation_steps=5000 \
+ --seed 12345678

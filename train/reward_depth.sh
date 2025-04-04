@@ -2,6 +2,7 @@ export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export CONTROLNET_DIR="lllyasviel/control_v11f1p_sd15_depth"
 export REWARDMODEL_DIR="Intel/dpt-hybrid-midas"
 export OUTPUT_DIR="MultiGen_small_tests/0_600_1e-5_readout_only_reward_200"
+export HF_HUB_CACHE='/home/jovyan/shares/SR008.fs2/test/datasets'
 
 
 accelerate launch --config_file "train/config.yml" \
@@ -26,7 +27,6 @@ accelerate launch --config_file "train/config.yml" \
  --lr_warmup_steps=10 \
  --checkpointing_steps=1000 \
  --grad_scale=0.5 \
- --use_ema \
  --validation_steps=1000 \
  --timestep_sampling_start=0 \
  --timestep_sampling_end=1000 \
