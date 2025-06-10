@@ -6,6 +6,10 @@
   .container .hero-body .subtitle {
     margin-bottom: 0 !important;
   }
+  strong {
+    font-weight: 700;
+    color: #333;
+  }
 </style>
 
 <html>
@@ -15,14 +19,14 @@
   <!-- Meta tags for social media banners, these should be filled in appropriatly as they are your "business card" -->
   <!-- Replace the content tag with appropriate information -->
   <meta name="description"
-    content="Ctrl-U: Robust Conditional Image Generation via Uncertainty-aware Reward Modeling." />
+    content="Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback." />
 
   <meta name="keywords"
-    content="Conditional Image Generation, Uncertainty Learning" />
+    content="Conditional Image Generation, ControlNet, Diffusion models" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <title>
-    Ctrl-U | Project Page
+    InnerControl | Project Page
   </title>
   <link rel="icon" type="image/x-icon" href="static/images/favicon.ico" />
   <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet" />
@@ -50,31 +54,27 @@
         <div class="columns is-centered">
           <div class="column has-text-centered">
             <h2 class="title is-2 publication-title">
-              Ctrl-U: Robust Conditional Image Generation<br> via Uncertainty-aware Reward Modeling
+              Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback.
             </h2>
             <div class="is-size-5 publication-authors">
               <!-- Paper authors -->
               <span class="author-block">
-                <a href="https://scholar.google.com/citations?user=NLPMoeAAAAAJ/">Guiyu Zhang</a><sup>*1,2</sup>,</span>
+                <a href="https://scholar.google.com/citations?user=lD5JnEAAAAAJ&hl=ru/">Nina Konovalova</a><sup>1</sup>,</span>
               <span class="author-block">
-                <a href="https://c7w.tech/about/">Huan-ang Gao</a><sup>*2</sup>,</span>
+                <a href="https://scholar.google.com/citations?user=7g8RbyMAAAAJ&hl=ru&oi=ao">Maxim Nikolaev</a><sup>1</sup>,</span>
               <span class="author-block">
-                Zijian Jiang<sup class="">2</sup>,</span>
-              </span>
-              <!-- <br> -->
-              <span class="author-block">
-                <a href="https://sites.google.com/view/fromandto" target="_blank" class="">Hao Zhao</a><sup>†2</sup>,
+                <a href="https://scholar.google.ru/citations?user=q0lIfCEAAAAJ&hl=en" target="_blank" class="">Andrey Kuznetsov</a><sup>1</sup>,
               </span>
               <span class="author-block">
-                <a href="https://www.zdzheng.xyz/" target="_blank" class="">Zhedong Zheng</a><sup>†1</sup>
+                <a href="https://scholar.google.com/citations?user=MXJTRGoAAAAJ&hl=ru&oi=ao" target="_blank" class="">Aibek Alanov</a><sup>1,2</sup>
               </span>
             </div>
             <!-- a margin of 0.5em -->
             <div style="margin: 0.5em;"></div>
             <div class="is-size-5 publication-authors">
               <span class="author-block is-size-5">
-                <span class="author-block"><sup>1</sup> Faculty of Science and Technology, University of Macau<br>
-                <span class="author-block"><sup>2</sup> Institute for AI Industry Research (AIR), Tsinghua University</span><br>
+                <span class="author-block"><sup>1</sup> AIRI, Moscow<br>
+                <span class="author-block"><sup>2</sup> HSE, University</span><br>
             </div>
 
             <div class="column has-text-centered">
@@ -100,15 +100,6 @@
                     <span>Code</span>
                   </a>
                 </span>
-
-                <!-- ArXiv abstract Link -->
-                <span class="link-block">
-                  <a href="https://arxiv.org/abs/2410.11236" target="_blank"
-                    class="external-link button is-normal is-rounded is-dark">
-                    <span class="icon">
-                      <i class="ai ai-arxiv"></i>
-                    </span>
-                    <span>arXiv</span>
                   </a>
                 </span>
               </div>
@@ -127,13 +118,10 @@
       <div class="hero-body">
         <!-- Image with zero margin at the bottom -->
         <h2 class="title" style="text-align: center;">Motivation</h2>
-        <img src="static/images/Motivation.png"
+        <img src="static/images/results.png"
              class="interpolation-image"
              alt="Interpolate start reference image."/>
         <!-- Combined classes in the <h2> tag -->
-        <h2 class="subtitle has-text-justified is-size-6" style=" font-size: 20px;">
-          <b>Given a test image and the layout condition, we employ a diffusion model to generate new images by adding noise and then recovering from the noisy input.</b> (a) Ground-truth segmentation results with the category illustration. (b) Here we show the reward changes, \(\textit{i.e.}\), mIoU error, on newly generated images at different timesteps. The horizontal axis represents the current timestep <span>\(t\)</span> and the vertical axis shows the error, \( \textit{i.e.} \), 1-mIoU. As shown, even at <span>\(t = 0\)</span>, there are non-zero mIoU errors. As <span>\(t\)</span> increases, <strong>although the visual layout aligns with the condition, the reward model tends to increase the error,</strong> leading to the backpropagation of incorrect gradients.
-        </h2>
       </div>
     </div>
     <div class="container is-max-desktop">
@@ -143,97 +131,86 @@
           <h2 class="title is-3">Abstract</h2>
           <div class="content has-text-justified">
             <p>
-              In this paper, we focus on the task of conditional image generation, where an image is synthesized according to user instructions. The critical challenge underpinning this task is ensuring both the fidelity of the generated images and their semantic alignment with the provided conditions. To tackle this issue, previous studies have employed supervised perceptual losses derived from pre-trained models, \( \textit{i.e.} \), reward models, to enforce alignment between the condition and the generated result. However, we observe one inherent shortcoming: considering the diversity of synthesized images, the reward model usually provides inaccurate feedback when encountering newly generated data, which can undermine the training process. To address this limitation, we propose an uncertainty-aware reward modeling, called <b>Ctrl-U</b>, including uncertainty estimation and uncertainty-aware regularization, designed to reduce the adverse effects of imprecise feedback from the reward model. Given the inherent cognitive uncertainty within reward models, even images generated under identical conditions often result in a relatively large discrepancy in reward loss. Inspired by the observation, we explicitly leverage such prediction variance as an uncertainty indicator. Based on the uncertainty estimation, we regularize the model training by adaptively rectifying the reward. In particular, rewards with lower uncertainty receive higher loss weights, while those with higher uncertainty are given reduced weights to allow for larger variability. The proposed uncertainty regularization facilitates reward fine-tuning through consistency construction. Extensive experiments validate the effectiveness of our methodology in improving the controllability and generation quality, as well as its scalability across diverse conditional scenarios, including segmentation mask, edge, and depth conditions.
+              Despite significant progress in text-to-image diffusion models, achieving precise spatial control over generated outputs remains challenging. One of the popular approaches for this task is ControlNet, which introduces an auxiliary conditioning module into the architecture. To improve alignment of the generated image and control, ControlNet++ proposes a cycle consistency loss to refine correspondence between controls and outputs, but restricts its application to the final denoising steps, while the main structure is introduced at an early generation stage. To address this issue, we suggest <strong>InnerControl</strong> — a training strategy that enforces spatial consistency across all diffusion steps. Specifically, we train lightweight control prediction probes — small convolutional networks — to reconstruct input control signals (e.g., edges, depth) from intermediate UNet features at every denoising step. We prove the efficiency of such models to extract signals even from very noisy latents and utilize these models to generate pseudo ground truth controls during training. The suggested approach enables an alignment loss that minimizes the difference between predicted and target condition throughout the whole diffusion process. Our experiments demonstrate that our method improves control alignment and fidelity of generation. By integrating this loss with established training techniques (e.g., ControlNet++), we achieve high performance across different condition methods such as edge and depth conditions.
             </p>
           </div>
         </div>
     </div>    
     <div style="margin: 2em;"></div>
-  <!-- End paper abstract -->
-  <div class="container is-max-desktop">
-    <div class="hero-body">
-      <!-- Image with zero margin at the bottom -->
-      <h2 class="title" style="text-align: center;">Method</h2>
-      <img src="static/images/Method.png"
-           class="interpolation-image"
-           alt="Interpolate start reference image."/>
-        <h2 class="subtitle has-text-justified is-size-6" style="margin-top: 5; font-size: 21px;">
-          <b>Overall pipeline for our proposed method.</b> (a) Conditional Generation. Given text, source image <span>\(x_0\)</span>, and the conditional control <span>\(c\)</span>, we extract feature <span>\(z_0\)</span>, <span>\(f_t\)</span>, <span>\(f_c\)</span>, respectively. Then, we fine-tune the Diffusion model to generate two intermediate features for the image decoder. (b) Uncertainty Learning. Given the two features, we decode the two images, \( \textit{i.e.} \), <span>\(\hat{x}_0^1\)</span> and <span>\(\hat{x}_0^2\)</span>. Then we apply the reward model to obtain the two layout predictions <span>\(\hat{c}_1\)</span> and <span>\(\hat{c}_2\)</span>. We leverage the prediction discrepancy as the uncertainty indicator to rectify the original reward loss.
-        </h2>
-      </div>
+    <!-- New Motivation Section -->
+    <div class="container is-max-desktop">
+      <div class="hero-body" style="padding: 10px 0;">
+        <h2 class="title is-4" style="margin-bottom: 5px; text-align: center;">Pipeline overview</h2>
+        <img src="static/images/pipeline.png"
+             class="interpolation-image"
+             alt="Interpolate start reference image."/>
+        <h2 class="subtitle has-text-justified is-size-6" style=" font-size: 20px;">
+          <b>Pipeline overview. We schematically illustrate the main idea of our <strong>InnerControl</strong> framework, highlighting the integration of the alignment loss. The main difference from ControlNet++ is <strong>InnerControl</strong>, which processes intermediate features extracted from the UNet decoder. These features are passed through an aggregation network to predict spatial control signals (e.g., depth or edge maps), which are then compared to the input control $c_{spatial}$ to enforce consistency at every denoising step.
     </div>
+    <div style="margin: 2em;"></div>
+<div style="margin: 2em;"></div>
   <!-- End youtube video -->
     <div class="hero-body">
       <div class="container">
         <!-- Paper video. -->
-        <h2 class="title is-3">Qualitative Results</h2> <!-- Results title, assuming it is left-aligned -->
+        <h2 class="title is-3">Quantitative Results</h2> <!-- Results title, assuming it is left-aligned -->
         <div style="margin: 2em;"></div>
         <div class="container is-max-desktop">
           <div class="hero-body" style="padding: 10px 0;">
             <!-- Center-aligned title for better controllability and generation quality -->
-            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Better Controllability and Generation Quality than Other Methods</h4>
-            <img src="./static/images/visualization.png"
+            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Controllability and Generation Quality.</h4>
+            <img src="./static/images/metrics.png"
               class="interpolation-image"
               alt="Interpolate start reference image."/>
             <h4 class="subtitle has-text-centered is-size-6">
-              <p>Qualitative comparisons with different conditional controls on unseen test images.</p>
+              <p>
+                Unified comparison on the MultiGen‑20M benchmark. 
+                Controllability is measured by SSIM (<span style="color:green;">&uarr;</span>) for HED/LineArt and RMSE(<span style="color:red;">&darr;</span>) for Depth; 
+                fidelity by FID (<span style="color:red;">&darr;</span>); relevance by CLIP‑score(<span style="color:green;">&uarr;</span>). 
+                <sup>*</sup> – denotes training model from scratch using suggested in paper hyperparameters.
+              </p>
             </h4>
           </div>
         </div>
   
         <div style="margin: 2em;"></div>
         <!-- Second Qualitative Results aligned with Results -->
-        <h2 class="title is-3">Quantitative Results</h2> <!-- Results title, assuming it is left-aligned -->
+        <h2 class="title is-3">Qualitative Results</h2> <!-- Results title, assuming it is left-aligned -->
         <div style="margin: 2em;"></div>
         <div class="container is-max-desktop">
           <div class="hero-body" style="padding: 10px 0;">
             <!-- Center-aligned title for better controllability and generation quality -->
-            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Better Controllability than Other Methods</h4>
-            <img src="./static/images/controllability.png"
+            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Qualitative Comparison with other methods</h4>
+            <img src="./static/images/images.pdf"
               class="interpolation-image"
               alt="Interpolate start reference image."/>
               <h4 class="subtitle has-text-justified is-size-6" style="margin-top: 0; font-size: 21px;">
-                <b>Controllability comparison under various conditional controls and datasets.</b> <span>\(\uparrow\)</span> denotes higher result is better, while <span>\(\downarrow\)</span> indicates lower is better. '-' signifies the absence of a publicly available model for testing. The best result in each column is marked <b>bold</b> and the second is <u>underlined</u>. We generate four groups of png images and report their average result to reduce random errors.
+                <b>Visualization of difference between extracted signal from intermediate features and input control after our training applied (<i>top</i>) and for standard ControlNet (<i>bottom</i>)
             </h4>
 
-            <div style="margin: 1em;"></div>
-            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Better Generation Quality than Other Methods</h4>
-            <img src="./static/images/image_quality.png"
-              class="interpolation-image"
-              alt="Interpolate start reference image."/>
-              <h4 class="subtitle has-text-justified is-size-6" style="margin-top: 0; font-size: 21px;">
-                <b>FID (<span>\(\downarrow\)</span>) comparison under various conditional controls and datasets.</b> '-' signifies the absence of a publicly available model for testing. The best result in each column is marked <b>bold</b> and the second is <u>underlined</u>. We generate four groups of png images and report their average result to reduce random errors.
-            </h4>
       </div>
     </div>
 
     <div style="margin: 2em;"></div>
-    <h2 class="title is-3">More Visualization Results (GIF Demo)</h2> <!-- Results title, assuming it is left-aligned -->
+    <!-- More Visualization Results -->
+    <h2 class="title is-3">More Visualization Results</h2>
     <div style="margin: 3.5em;"></div>
     <div class="container is-max-desktop">
       <div class="hero-body">
+        <!-- Add buttons above the images -->
+        <div class="buttons are-medium is-centered" style="margin-bottom: 20px;">
+          <button class="button is-dark" onclick="showImage('depth')">Depth</button>
+          <button class="button is-dark" onclick="showImage('lineart')">LineArt</button>
+          <button class="button is-dark" onclick="showImage('hed')">HED</button>
+        </div>
+
+        <!-- Dynamic image container -->
         <figure>
-          <img src="./static/images/img_title.png" class="interpolation-image" alt="Interpolate start reference image."/>
-          <!-- Center-align the title -->
-          <h4 class="title is-4" style="text-align: center;">LineArt Edge</h4>
-        </figure>
-        <figure>
-          <img src="./static/images/lineart.gif" class="interpolation-image" alt="Line art image"/>
-          <h4 class="title is-4" style="text-align: center;">Depth Map</h4>
-        </figure>
-        <figure>
-          <img src="./static/images/depth.gif" class="interpolation-image" alt="Depth image"/>
-          <h4 class="title is-4" style="text-align: center;">Hed Edge</h4>
-        </figure>
-        <figure>
-          <img src="./static/images/hed.gif" class="interpolation-image" alt="HED image"/>
-          <h4 class="title is-4" style="text-align: center;">Segmentation Map</h4>
-        </figure>
-        <figure>
-          <img src="./static/images/segmentation.gif" class="interpolation-image" alt="Segmentation image"/>
-          <!-- Assuming there might be a title needed here as well, centered -->
+          <img id="dynamic-image" src="./static/images/depth.pdf" class="interpolation-image" alt="Interpolate start reference image."/>
+          <h4 class="title is-4" style="text-align: center;">Selected Control Type</h4>
         </figure>
       </div>
+</div>
     </div>
 
     <div class="container is-max-desktop content" style="font-size: 16px;">
@@ -289,6 +266,13 @@
     new BeerSlider(document.getElementById('slider8'), { start: '40' });
     new BeerSlider(document.getElementById('slider9'), { start: '40' });
     new BeerSlider(document.getElementById('slider10'), { start: '40' });
+  </script>
+
+  <script>
+    function showImage(type) {
+      const img = document.getElementById('dynamic-image');
+      img.src = `./static/images/appendix_${type}.pdf`;
+    }
   </script>
 </body>
 
