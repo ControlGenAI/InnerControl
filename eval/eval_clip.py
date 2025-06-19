@@ -18,6 +18,7 @@ metric = CLIPScore(model_name_or_path="openai/clip-vit-base-patch16").cuda()
 
 bar = tqdm(range(len(dataset)), desc=f"Evaluating {args.dataset}")
 print(args.generated_image_dir)
+
 rewards = []
 for idx in range(len(dataset)):
     data = dataset[idx]
@@ -31,5 +32,3 @@ for idx in range(len(dataset)):
     bar.update(1)
     
 print(metric.score / metric.n_samples)
-print()
-print()

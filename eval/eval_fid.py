@@ -2,28 +2,12 @@
 # https://github.com/GaParmar/clean-fid
 from cleanfid import fid
 import argparse
+import shutil
+import os
 
 def main(real_image_path, generated_image_path):
     score = 0.0
     # We have 4 groups of generated images
-    import shutil
-    import os
-
-    # Define the source and destination directories
-    # source_dir = f'{generated_image_path}/group_0'
-    # dest_dir = f'{generated_image_path}/group_0_images'
-
-    # # Create the destination directory if it doesn't exist
-    # if not os.path.exists(dest_dir):
-    #     os.makedirs(dest_dir)
-
-    # # Copy all files from the source directory to the destination directory
-    # for filename in os.listdir(source_dir):
-    #     if filename.endswith(".png") and 'depth' not in filename:
-    #         source_file = f'{source_dir}/{filename}'
-    #         dest_file = f'{dest_dir}/{filename}'
-    #         shutil.copy(source_file, dest_file)
-
     for i in range(4):
         source_dir = f'{generated_image_path}/group_{i}'
         dest_dir = f'{generated_image_path}/group_{i}_images'
@@ -32,7 +16,7 @@ def main(real_image_path, generated_image_path):
 
         # Copy all files from the source directory to the destination directory
         for filename in os.listdir(source_dir):
-            if filename.endswith(".png") and 'depth' not in filename:
+            if filename.endswith(".png") and 'depth' not in filename and 'lineart' not in filename:
                 source_file = f'{source_dir}/{filename}'
                 dest_file = f'{dest_dir}/{filename}'
                 shutil.copy(source_file, dest_file)

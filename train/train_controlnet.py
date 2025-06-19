@@ -39,7 +39,6 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-from kornia.filters import canny
 
 import diffusers
 from diffusers import (
@@ -1042,18 +1041,7 @@ def main(args):
 
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 
-                if args.controlnet_model_name_or_path == "lllyasviel/control_v11p_sd15_canny":
-                    low_threshold = random.uniform(0, 1)
-                    high_threshold = random.uniform(low_threshold, 1)
-                    with torch.no_grad():
-                        # mean & std used in image transformations
-                        mean = torch.tensor([0.5, 0.5, 0.5]).view(1, -1, 1, 1).to(accelerator.device)
-                        std = torch.tensor([0.5, 0.5, 0.5]).view(1, -1, 1, 1).to(accelerator.device)
-                        # magnitude, edge
-                        denormalized_condition_image = controlnet_image * std + mean
-                        _, controlnet_image = canny(denormalized_condition_image, low_threshold, high_threshold)
-                        controlnet_image = controlnet_image.expand(-1, 3, -1, -1)  # (B, 3, H, W)
-                elif args.controlnet_model_name_or_path in [
+                if args.controlnet_model_name_or_path in [
                     "lllyasviel/control_v11p_sd15_softedge", 'lllyasviel/control_v11p_sd15_lineart']:
                     with torch.no_grad():
                         if args.controlnet_model_name_or_path == "lllyasviel/control_v11p_sd15_softedge":

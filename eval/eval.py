@@ -5,7 +5,6 @@ import torch
 import numpy as np
 import torchvision.transforms.functional as F
 import argparse
-#import cv2
 
 from matplotlib import pyplot as plt
 from torchvision.utils import make_grid
@@ -19,7 +18,6 @@ from diffusers import (
 from datasets import load_dataset, load_from_disk
 from accelerate import PartialState
 from PIL import Image
-from kornia.filters import canny
 from transformers import DPTImageProcessor, DPTForDepthEstimation
 
 from torchvision.transforms import Compose, Normalize, ToTensor
@@ -34,7 +32,6 @@ MegaByte = 2**20
 PngImagePlugin.MAX_TEXT_CHUNK = MaximumDecompressedsize * MegaByte
 Image.MAX_IMAGE_PIXELS = None
 
-#from stable_diffusion_controlnet_with_readout import StableDiffusionControlNetPipeline
 
 
 def seed_torch(seed=1):
@@ -76,8 +73,7 @@ def main(args):
             dataset_path=args.dataset_name,
             split=args.dataset_split
         )
-    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-    print()
+        
     print(f"Loading pre-trained weights from {args.model_path}")
 
     # main_process_first: Avoid repeated downloading of models for all processes
@@ -178,24 +174,7 @@ def main(args):
             prompt = dataset[idx][args.prompt_column]
             label = dataset[idx][args.label_column] if args.label_column is not None else None
 
-            if args.task_name == 'canny':
-                low_threshold = 0.1 # random.uniform(0, 1)
-                high_threshold = 0.2 # random.uniform(low_threshold, 1)
-                condition = canny(F.pil_to_tensor(condition).unsqueeze(0) / 255.0, low_threshold, high_threshold)[1]
-                condition = F.to_pil_image(condition.squeeze(0), 'L')
-                condition = condition.convert('RGB') if args.model != 't2i-adapter' else condition
-                label = condition
-            if args.task_name == 'canny_cv2':
-                low_threshold = 100
-                high_threshold = 200
-
-                condition = np.array(condition)[:, :, ::-1].copy()  # RGB to BGR
-                condition = cv2.Canny(np.array(condition), low_threshold, high_threshold)
-                condition = Image.fromarray(condition)
-                condition = condition.convert('RGB') if args.model != 't2i-adapter' else condition
-                label = condition
-
-            elif args.task_name in ['lineart', 'hed']:
+            if args.task_name in ['lineart', 'hed']:
                 condition = F.pil_to_tensor(condition.resize((args.resolution, args.resolution))).unsqueeze(0) / 255.0
                 with torch.no_grad():
                     condition = model(condition)
@@ -236,21 +215,7 @@ def main(args):
                     **readout_params,
                 ).images
 
-            if args.task_name == 'canny':
-                canny_edges = [F.pil_to_tensor(img)/255.0 for img in images]
-                with torch.no_grad():
-                    canny_edges = canny(torch.stack(canny_edges), low_threshold, high_threshold)[1]
-                canny_edges = torch.chunk(canny_edges, args.batch_size, dim=0)
-                canny_edges = [x.reshape(1, args.resolution, args.resolution) for x in canny_edges]
-                canny_edges = [F.to_pil_image(x, 'L').convert('RGB') for x in canny_edges]
-                [img.save(f"{save_dir}/images/group_{i}/{uid}_edge.png") for i, img in enumerate(canny_edges)]
-            elif args.task_name == 'canny_cv2':
-                canny_edges = [cv2.Canny(np.array(images[0])[:, :, ::-1].copy(), 100, 200) for img in images]
-                canny_edges = [torch.tensor(x)/255.0 for x in canny_edges]
-                canny_edges = [x.reshape(1, args.resolution, args.resolution) for x in canny_edges]
-                canny_edges = [F.to_pil_image(x, 'L').convert('RGB') for x in canny_edges]
-                [img.save(f"{save_dir}/images/group_{i}/{uid}_canny.png") for i, img in enumerate(canny_edges)]
-            elif args.task_name in ['lineart', 'hed']:
+            if args.task_name in ['lineart', 'hed']:
                 lineart = [F.pil_to_tensor(img)/255.0 for img in images]
                 with torch.no_grad():
                     lineart = model(torch.stack(lineart))
@@ -279,13 +244,7 @@ def main(args):
             [img.save(f"{save_dir}/images/group_{i}/{uid}.png") for i, img in enumerate(images)]
 
             # generate a grid of images
-            if args.task_name in ['canny', 'canny_cv2']:
-                # input image, condition image, generated_images
-                images = [image] + images + [condition] + canny_edges
-                images = [img.convert('RGB') for img in images] if args.model == 't2i-adapter' else images
-                images = [F.pil_to_tensor(x) for x in images]
-                images = make_grid(images, nrow=len(images)//2)
-            elif args.task_name in ['lineart', 'hed']:
+            if args.task_name in ['lineart', 'hed']:
                 # input image, condition image, generated_images
                 if args.task_name == 'lineart':
                     condition = 255 - F.pil_to_tensor(condition)
@@ -319,15 +278,15 @@ def main(args):
         print(f"Validation time: {end_time - start_time} seconds")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Semantic Segmentation and Image Generation')
-    parser.add_argument('--task_name', type=str, default='seg')
-    parser.add_argument('--dataset_name', type=str, default='limingcv/Captioned_COCOStuff', help='Dataset name')
+    parser = argparse.ArgumentParser(description='Depth estimation and Image Generation')
+    parser.add_argument('--task_name', type=str, default='depth')
+    parser.add_argument('--dataset_name', type=str, default='limingcv/MultiGen-20M_canny_eval', help='Dataset name')
     parser.add_argument('--dataset_split', type=str, default=None)
     parser.add_argument('--model_path', type=str, default='lllyasviel/control_v11p_sd15_seg')
     parser.add_argument('--sd_path', type=str, default='runwayml/stable-diffusion-v1-5')
     parser.add_argument('--guidance_scale', type=float, default=7.5)
     parser.add_argument('--image_column', type=str, default='image')
-    parser.add_argument('--condition_column', type=str, default='control_seg')
+    parser.add_argument('--condition_column', type=str, default='image')
     parser.add_argument('--label_column', type=str, default=None)
     parser.add_argument('--prompt_column', type=str, default='prompt')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for image generation')
@@ -343,37 +302,3 @@ if __name__ == "__main__":
     main(args)
 
 
-""" ControlNet """
-# Hed: accelerate launch --main_process_port=23333 --num_processes=4 controlnet/eval.py --task_name='hed' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='lllyasviel/control_v11p_sd15_softedge'
-
-# LineDrawing: accelerate launch --main_process_port=23333 --num_processes=4 controlnet/eval.py --task_name='lineart' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='lllyasviel/control_v11p_sd15_lineart'
-
-# COCOStuff: accelerate launch --main_process_port=23456 --num_processes=4 controlnet/eval.py --task_name='seg' --dataset_name='limingcv/Captioned_COCOStuff' --dataset_split='validation' --condition_column='control_seg' --prompt_column='prompt' --label_column='panoptic_seg_map' --model_path='lllyasviel/control_v11p_sd15_seg'
-
-# ADE20K: accelerate launch --main_process_port=23456 --num_processes=4 controlnet/eval.py --task_name='seg' --dataset_name='limingcv/Captioned_ADE20K' --dataset_split='validation' --condition_column='control_seg' --prompt_column='prompt' --label_column='seg_map' --model_path='lllyasviel/control_v11p_sd15_seg'
-
-# Canny: accelerate launch --main_process_port=12456 --num_processes=4 controlnet/eval.py --task_name='canny' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='lllyasviel/control_v11p_sd15_canny'
-
-# Depth: accelerate launch --main_process_port=12456 --num_processes=4 controlnet/eval.py --task_name='depth' --dataset_name='limingcv/MultiGen-20M_depth_eval' --dataset_split='validation' --condition_column='control_depth' --prompt_column='text'  --label_column='control_depth' --model_path='lllyasviel/control_v11f1p_sd15_depth'
-
-
-""" ControlNet-SDXL """
-# Canny: accelerate launch --main_process_port=12456 --num_processes=4 controlnet/eval.py --task_name='canny' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='diffusers/controlnet-canny-sdxl-1.0' --sd_path='stabilityai/stable-diffusion-xl-base-1.0' --model='controlnet-sdxl' --num_inference_steps=50 --resolution 1024
-
-# Depth: accelerate launch --main_process_port=12456 --num_processes=4 controlnet/eval.py --task_name='depth' --dataset_name='limingcv/MultiGen-20M_depth_eval' --dataset_split='validation' --condition_column='control_depth' --prompt_column='text' --label_column='control_depth'  --model_path='diffusers/controlnet-depth-sdxl-1.0' --sd_path='stabilityai/stable-diffusion-xl-base-1.0' --model='controlnet-sdxl' --num_inference_steps=50 --resolution 1024
-
-
-""" T2I-Adapter """
-# Depth: accelerate launch --main_process_port=12456 --num_processes=4 controlnet/eval.py --task_name='depth' --dataset_name='limingcv/MultiGen-20M_depth_eval' --dataset_split='validation' --condition_column='control_depth' --prompt_column='text'  --label_column='control_depth' --model_path='TencentARC/t2iadapter_depth_sd15v2' --sd_path='runwayml/stable-diffusion-v1-5' --model='t2i-adapter' --num_inference_steps=50
-
-# Canny: accelerate launch --main_process_port=23333 --num_processes=4 controlnet/eval.py --task_name='canny' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='TencentARC/t2iadapter_canny_sd15v2' --sd_path='runwayml/stable-diffusion-v1-5' --model='t2i-adapter' --num_inference_steps=50
-
-# ADE20K: accelerate launch --main_process_port=23333 --num_processes=4 controlnet/eval.py --task_name='seg' --dataset_name='limingcv/Captioned_ADE20K' --dataset_split='validation' --condition_column='control_seg' --prompt_column='prompt' --label_column='seg_map' --model_path='TencentARC/t2iadapter_seg_sd14v1' --sd_path='CompVis/stable-diffusion-v1-4' --model='t2i-adapter' --num_inference_steps=50
-
-
-""" T2I-Adapter-SDXL """
-# Canny: accelerate launch --main_process_port=23333 --num_processes=4 controlnet/eval.py --task_name='canny' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='TencentARC/t2i-adapter-canny-sdxl-1.0' --sd_path='stabilityai/stable-diffusion-xl-base-1.0' --model='t2i-adapter-sdxl' --num_inference_steps=50 --resolution 1024
-
-# Depth: accelerate launch --main_process_port=12456 --num_processes=4 controlnet/eval.py --task_name='depth' --dataset_name='limingcv/MultiGen-20M_depth_eval' --dataset_split='validation' --condition_column='control_depth' --prompt_column='text'  --label_column='control_depth' --model_path='TencentARC/t2i-adapter-depth-midas-sdxl-1.0' --sd_path='stabilityai/stable-diffusion-xl-base-1.0' --model='t2i-adapter-sdxl' --num_inference_steps=50 --resolution 1024
-
-# LineArt: accelerate launch --main_process_port=23333 --num_processes=4 controlnet/eval.py --task_name='lineart' --dataset_name='limingcv/MultiGen-20M_canny_eval' --dataset_split='validation' --condition_column='image' --prompt_column='text' --model_path='TencentARC/t2i-adapter-lineart-sdxl-1.0' --sd_path='stabilityai/stable-diffusion-xl-base-1.0' --model='t2i-adapter-sdxl' --num_inference_steps=50 --resolution 1024

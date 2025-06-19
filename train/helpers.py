@@ -23,75 +23,8 @@ import torch
 import einops
 from omegaconf import OmegaConf
 from aggregation_network import AggregationNetwork
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 import einops
-
-import os
-import shutil
-import subprocess
-from functools import wraps
-from accelerate import Accelerator
-
-def rank_zero_only(fn):
-    @wraps(fn)
-    def wrapped_fn(*args, **kwargs):
-        accelerator = Accelerator()
-        if accelerator.is_local_main_process:
-            return fn(*args, **kwargs)
-    return wrapped_fn
-
-class CodeSnapshotCallback:
-    def __init__(self, save_root, version=None, use_version=True):
-        self.save_root = save_root
-        self.version = version
-        self.use_version = use_version
-        self.savedir = self.get_savedir()
-
-    def get_savedir(self):
-        if self.use_version and self.version is not None:
-            return os.path.join(self.save_root, f"version_{self.version}")
-        return self.save_root
-
-    def get_file_list(self):
-        exclude_dirs = ['MultiGen', 'MultiGen_small_tests', 'MultiGen_correct', 'work_dirs', 'weights', 'wandb', 'code_snapshots', 'code_snapshotswork_dirs']
-        try:
-            files = set(
-                subprocess.check_output(
-                    'git ls-files -- ":!:load/*"', shell=True
-                ).splitlines()
-            ) | set(
-                subprocess.check_output(
-                    "git ls-files --others --exclude-standard", shell=True
-                ).splitlines()
-            )
-            #print(files)
-            try:
-                filtered_files = [f for f in files if not any(f.startswith(d) for d in exclude_dirs)]
-                print(filtered_files)
-            except:
-                exclude_dirs_bytes = [d.encode() for d in exclude_dirs]
-                filtered_files = [f for f in files if not any(f.startswith(d) for d in exclude_dirs_bytes)]
-                print(filtered_files)
-            #assert False
-            return [b.decode() for b in filtered_files]
-        except subprocess.CalledProcessError:
-            rank_zero_warn(
-                "Code snapshot is not saved. Please make sure you have git installed and are in a git repository."
-            )
-            return []
-    def save_code_snapshot(self):
-        os.makedirs(self.savedir, exist_ok=True)
-        for f in self.get_file_list():
-            if not os.path.exists(f) or os.path.isdir(f):
-                continue
-            os.makedirs(os.path.join(self.savedir, os.path.dirname(f)), exist_ok=True)
-            shutil.copyfile(f, os.path.join(self.savedir, f))
-
-    def on_fit_start(self):
-        try:
-            self.save_code_snapshot()
-        except Exception as e:
-            rank_zero_warn(f"Code snapshot is not saved. Error: {e}")
 
 
 def init_resnet_func(
@@ -174,7 +107,7 @@ def init_resnet_func(
         
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
-                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
+                print("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -459,45 +392,3 @@ def preprocess_timestep(sample, timestep):
     elif len(timesteps.shape) == 0:
         timesteps = timesteps[None].to(sample.device)
     return timesteps
-
-def preprocess_control(source, resize_size, control_range):
-    width, height = source.size
-    crop_size = min(source.size)
-    crop_x = np.random.randint(0, width - crop_size + 1)
-    crop_y = np.random.randint(0, height - crop_size + 1)
-    crop_resize_img = lambda img: img.convert("RGB").crop((crop_x, crop_y, crop_x + crop_size, crop_y + crop_size)).resize(resize_size)
-    source = crop_resize_img(source)
-    return torch.from_numpy(image_to_array(source, control_range))
-
-
-
-# def set_edits_control(
-#     edits, 
-#     control_image, 
-#     image_dim, 
-#     latent_dim,
-#     device
-# ):
-#     for edit in edits:
-#         if edit["head_type"] != "spatial":
-#             continue
-#         aggregation_config = edit["aggregation_kwargs"]
-#         control_range = aggregation_config["dataset_args"]["control_range"]
-#         sparse_loss = aggregation_config["dataset_args"]["sparse_loss"]
-#         control = preprocess_control(control_image, latent_dim, control_range)
-#         control = control.to(device)
-#         control_image = control_image.resize(image_dim)
-#         edit["control_image"] = control_image
-#         edit["control"] = control
-#         edit["control_range"] = control_range
-#         edit["sparse_loss"] = sparse_loss
-#     return edits
-    
-
-# def collect_hws(unet, idxs=None):
-#     return [module.hws for module in collect_layers(unet, idxs)]
-
-# def set_timestep(unet, timestep=None):
-#     for name, module in unet.named_modules():
-#         module_name = type(module).__name__
-#         module.timestep = timestep

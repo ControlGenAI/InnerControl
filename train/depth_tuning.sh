@@ -2,7 +2,6 @@ export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export CONTROLNET_DIR="lllyasviel/control_v11f1p_sd15_depth"
 export REWARDMODEL_DIR="Intel/dpt-hybrid-midas"
 export OUTPUT_DIR="work_dirs/reward_model/MultiGen/test"
-export HF_HUB_CACHE='/workspace-SR008.fs2/test/datasets'
 
 accelerate launch --config_file "train/config.yml" \
  --main_process_port=23256 train/train_controlnet.py \
@@ -12,7 +11,6 @@ accelerate launch --config_file "train/config.yml" \
  --dataset_name="limingcv/MultiGen-20M_depth" \
  --caption_column="text" \
  --conditioning_image_column="control_depth" \
- --cache_dir '/workspace-SR008.fs2/test/datasets' \
  --resolution=512 \
  --train_batch_size=8 \
  --gradient_accumulation_steps=4 \
@@ -25,4 +23,3 @@ accelerate launch --config_file "train/config.yml" \
  --lr_warmup_steps=10 \
  --checkpointing_steps=1000 \
  --validation_steps=5000 \
- --seed 12345678

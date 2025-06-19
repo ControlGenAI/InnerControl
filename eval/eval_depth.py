@@ -8,8 +8,6 @@ import torch
 import torch.nn.functional as F
 
 def compute_per_pixel_mse(root_dir):
-    print("=====")
-    print(root_dir)
     anno_dir = os.path.join(root_dir, 'annotations')
     img_dir = os.path.join(root_dir, 'images')
 

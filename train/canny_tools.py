@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from kornia.filters.gaussian import gaussian_blur2d
-from kornia.filters.kernels import get_canny_nms_kernel, get_hysteresis_kernel
+from kornia.filters.kernels import get_canny_nms_kernel
 from kornia.filters.sobel import spatial_gradient
 
 
