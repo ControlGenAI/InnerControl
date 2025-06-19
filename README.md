@@ -56,6 +56,7 @@ bash train/aligned_hed.sh
 bash train/aligned_linedrawing.sh
 ```
 
+
 ### 📌 Evaluation
 ### Checkpoints Preparation
 Please download the model weights and put them into each subset of `checkpoints`:
