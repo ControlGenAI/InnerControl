@@ -10,6 +10,18 @@
     font-weight: 700;
     color: #333;
   }
+
+  /* Style for inactive buttons */
+  .button.is-dark:not(.is-active) {
+    background-color: #4a4a4a; /* Lighter gray */
+    border-color: transparent;
+    color: #fff;
+  }
+
+  /* Optional: Add hover effect */
+  .button.is-dark:not(.is-active):hover {
+    background-color: #393939;
+  }
 </style>
 
 <html>
@@ -117,11 +129,12 @@
     <div class="container is-max-desktop">
       <div class="hero-body">
         <!-- Image with zero margin at the bottom -->
-        <h2 class="title" style="text-align: center;">Motivation</h2>
         <img src="static/images/results.png"
-             class="interpolation-image"
-             alt="Interpolate start reference image."/>
-        <!-- Combined classes in the <h2> tag -->
+           class="interpolation-image"
+           alt="Interpolate start reference image."
+           style="width: 100%; max-width: 100%; height: auto;"/>
+      <!-- You can also use a fixed size like width: 800px if needed -->
+      <!-- Combined classes in the <h2> tag -->
       </div>
     </div>
     <div class="container is-max-desktop">
@@ -145,7 +158,7 @@
              class="interpolation-image"
              alt="Interpolate start reference image."/>
         <h2 class="subtitle has-text-justified is-size-6" style=" font-size: 20px;">
-          <b>Pipeline overview. We schematically illustrate the main idea of our <strong>InnerControl</strong> framework, highlighting the integration of the alignment loss. The main difference from ControlNet++ is <strong>InnerControl</strong>, which processes intermediate features extracted from the UNet decoder. These features are passed through an aggregation network to predict spatial control signals (e.g., depth or edge maps), which are then compared to the input control $c_{spatial}$ to enforce consistency at every denoising step.
+          <b>Pipeline overview. We schematically illustrate the main idea of our <strong>InnerControl</strong> framework, highlighting the integration of the alignment loss. The main difference from ControlNet++ is <strong>InnerControl</strong>, which processes intermediate features extracted from the UNet decoder. These features are passed through an aggregation network to predict spatial control signals (e.g., depth or edge maps), which are then compared to the input control \( c_{\text{spatial}} \) to enforce consistency at every denoising step.
     </div>
     <div style="margin: 2em;"></div>
 <div style="margin: 2em;"></div>
@@ -158,7 +171,6 @@
         <div class="container is-max-desktop">
           <div class="hero-body" style="padding: 10px 0;">
             <!-- Center-aligned title for better controllability and generation quality -->
-            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Controllability and Generation Quality.</h4>
             <img src="./static/images/metrics.png"
               class="interpolation-image"
               alt="Interpolate start reference image."/>
@@ -180,37 +192,35 @@
         <div class="container is-max-desktop">
           <div class="hero-body" style="padding: 10px 0;">
             <!-- Center-aligned title for better controllability and generation quality -->
-            <h4 class="title is-4" style="margin-bottom: 5px; text-align: center;">Qualitative Comparison with other methods</h4>
-            <img src="./static/images/images.pdf"
+            <img src="./static/images/images.png"
               class="interpolation-image"
               alt="Interpolate start reference image."/>
-              <h4 class="subtitle has-text-justified is-size-6" style="margin-top: 0; font-size: 21px;">
+            <h4 class="subtitle has-text-centered is-size-6">
                 <b>Visualization of difference between extracted signal from intermediate features and input control after our training applied (<i>top</i>) and for standard ControlNet (<i>bottom</i>)
             </h4>
 
       </div>
     </div>
 
-    <div style="margin: 2em;"></div>
-    <!-- More Visualization Results -->
     <h2 class="title is-3">More Visualization Results</h2>
     <div style="margin: 3.5em;"></div>
     <div class="container is-max-desktop">
       <div class="hero-body">
-        <!-- Add buttons above the images -->
-        <div class="buttons are-medium is-centered" style="margin-bottom: 20px;">
-          <button class="button is-dark" onclick="showImage('depth')">Depth</button>
+        <!-- Title above buttons -->
+        <h4 class="title is-4 has-text-centered" style="width: 100%; margin-bottom: 1em;">Selected Control Type</h4>
+
+        <!-- Buttons -->
+        <div class="buttons are-medium is-centered" style="margin-bottom: 20px; width: 100%;">
+          <button class="button is-dark is-selected" onclick="showImage('depth')">Depth</button>
           <button class="button is-dark" onclick="showImage('lineart')">LineArt</button>
           <button class="button is-dark" onclick="showImage('hed')">HED</button>
         </div>
 
-        <!-- Dynamic image container -->
-        <figure>
-          <img id="dynamic-image" src="./static/images/depth.pdf" class="interpolation-image" alt="Interpolate start reference image."/>
-          <h4 class="title is-4" style="text-align: center;">Selected Control Type</h4>
+        <!-- Image below buttons -->
+        <figure class="has-text-centered">
+          <img id="dynamic-image" src="./static/images/appendix_depth.png" class="interpolation-image" style="max-width: 100%; height: auto;" alt="Selected Control Type Image"/>
         </figure>
       </div>
-</div>
     </div>
 
     <div class="container is-max-desktop content" style="font-size: 16px;">
@@ -268,12 +278,27 @@
     new BeerSlider(document.getElementById('slider10'), { start: '40' });
   </script>
 
-  <script>
-    function showImage(type) {
-      const img = document.getElementById('dynamic-image');
-      img.src = `./static/images/appendix_${type}.pdf`;
-    }
-  </script>
+<script>
+  function showImage(type) {
+    const img = document.getElementById('dynamic-image');
+    img.src = `./static/images/appendix_${type}.png`;
+
+    // Optional: Highlight active button
+    document.querySelectorAll('.button').forEach(btn => {
+      btn.classList.remove('is-active');
+    });
+
+    event.target.classList.add('is-active');
+  }
+</script>
+<script>
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']]
+    },
+    processEscapes: true
+  };
+</script>
 </body>
 
 </html>
