@@ -187,8 +187,8 @@ eval_dirs
 !*/eval_dirs
 
 # images
-*.jpg
-*.png
+# *.jpg
+# *.png
 
 # zipped files
 *.tar.gz
