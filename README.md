@@ -1,6 +1,6 @@
 # [Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback]()
 
-<a href="https://arxiv.org/abs/2507.02321"><img src="https://img.shields.io/badge/arXiv-2505.21144-b31b1b.svg" height=22.5><a>
+<a href="https://arxiv.org/abs/2507.02321"><img src="https://img.shields.io/badge/arXiv-2507.02321-b31b1b.svg" height=22.5><a>
 <a href="inference.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22.5></a>
 <a href="https://controlgenai.github.io/InnerControl/"><img src="https://img.shields.io/badge/Project-Website-blue" height=22.5><a>
 [![License](https://img.shields.io/github/license/AIRI-Institute/al_toolbox)](./LICENSE.txt)
