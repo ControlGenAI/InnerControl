@@ -1,310 +1,398 @@
 <!DOCTYPE html>
-<style>
-  .container .hero-body .title.is-3 {
-    margin-top: 10px !important;
-  }
-  .container .hero-body .subtitle {
-    margin-bottom: 0 !important;
-  }
-  strong {
-    font-weight: 700;
-    color: #333;
-  }
-
-  /* Style for inactive buttons */
-  .button.is-dark:not(.is-active) {
-    background-color: #4a4a4a; /* Lighter gray */
-    border-color: transparent;
-    color: #fff;
-  }
-
-  /* Optional: Add hover effect */
-  .button.is-dark:not(.is-active):hover {
-    background-color: #393939;
-  }
-</style>
-
-<html>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.0/es5/tex-mml-chtml.js" integrity="sha384-R2lNHWtz1w8Q1b4Hp0SoQALQU35nOp2zP0WlO2hhVxpu4cr5Zg6H1V6YwD+f+Ch8" crossorigin="anonymous"></script>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <!-- Meta tags for social media banners, these should be filled in appropriatly as they are your "business card" -->
-  <!-- Replace the content tag with appropriate information -->
-  <meta name="description"
-    content="Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback." />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InnerControl: Aligning ControlNet with Internal Feature Feedback</title>
+  <meta name="description" content="InnerControl trains lightweight probes that read control signals from intermediate diffusion features and uses them as an alignment loss across the denoising trajectory, improving ControlNet controllability on SD1.5, SDXL, SD3.5 and FLUX. WACV 2027.">
+  <meta name="keywords" content="ControlNet, controllable generation, diffusion models, alignment loss, InnerControl, WACV 2027">
 
-  <meta name="keywords"
-    content="Conditional Image Generation, ControlNet, Diffusion models" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="InnerControl: Aligning ControlNet with Internal Feature Feedback">
+  <meta property="og:description" content="Full-trajectory control alignment for ControlNet via probes on intermediate diffusion features. WACV 2027.">
+  <meta property="og:image" content="https://controlgenai.github.io/InnerControl/static/images/teaser.jpg">
+  <meta name="twitter:card" content="summary_large_image">
 
-  <title>
-    InnerControl | Project Page
-  </title>
-  <link rel="icon" type="image/x-icon" href="static/images/favicon.ico" />
-  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%233b6fd8'/%3E%3Ctext x='32' y='44' font-family='Arial,sans-serif' font-size='30' font-weight='700' fill='white' text-anchor='middle'%3EIC%3C/text%3E%3C/svg%3E">
 
-  <link rel="stylesheet" href="static/css/bulma.min.css" />
-  <link rel="stylesheet" href="static/css/bulma-carousel.min.css" />
-  <link rel="stylesheet" href="static/css/bulma-slider.min.css" />
-  <link rel="stylesheet" href="static/css/fontawesome.all.min.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" />
-  <link rel="stylesheet" href="static/css/index.css" />
-  <link rel="stylesheet" href="https://unpkg.com/beerslider/dist/BeerSlider.css">
-
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-  <script src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700|Noto+Sans:400,600,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/academicons@1.9.4/css/academicons.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
   <script defer src="static/js/fontawesome.all.min.js"></script>
-  <script src="static/js/bulma-carousel.min.js"></script>
-  <script src="static/js/bulma-slider.min.js"></script>
-  <script src="static/js/index.js"></script>
-</head>
 
-<body>
-  <section class="hero">
-    <div class="hero-body">
-      <div class="container is-max-desktop">
-        <div class="columns is-centered">
-          <div class="column has-text-centered">
-            <h2 class="title is-2 publication-title">
-              Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback.
-            </h2>
-            <div class="is-size-5 publication-authors">
-              <!-- Paper authors -->
-              <span class="author-block">
-                <a href="https://scholar.google.com/citations?user=lD5JnEAAAAAJ&hl=ru/">Nina Konovalova</a><sup>1</sup>,</span>
-              <span class="author-block">
-                <a href="https://scholar.google.com/citations?user=7g8RbyMAAAAJ&hl=ru&oi=ao">Maxim Nikolaev</a><sup>1</sup>,</span>
-              <span class="author-block">
-                <a href="https://scholar.google.ru/citations?user=q0lIfCEAAAAJ&hl=en" target="_blank" class="">Andrey Kuznetsov</a><sup>1</sup>,
-              </span>
-              <span class="author-block">
-                <a href="https://scholar.google.com/citations?user=MXJTRGoAAAAJ&hl=ru&oi=ao" target="_blank" class="">Aibek Alanov</a><sup>1,2</sup>
-              </span>
-            </div>
-            <!-- a margin of 0.5em -->
-            <div style="margin: 0.5em;"></div>
-            <div class="is-size-5 publication-authors">
-              <span class="author-block is-size-5">
-                <span class="author-block"><sup>1</sup> AIRI, Moscow<br>
-                <span class="author-block"><sup>2</sup> HSE, University</span><br>
-            </div>
-
-            <div class="column has-text-centered">
-              <div class="publication-links">
-                <!-- Arxiv PDF link -->
-                <span class="link-block">
-                  <a href="https://arxiv.org/abs/2507.02321" target="_blank"
-                    class="external-link button is-normal is-rounded is-dark">
-                    <span class="icon">
-                      <i class="fas fa-file-pdf"></i>
-                    </span>
-                    <span>Paper</span>
-                  </a>
-                </span>
-
-                <!-- Github link -->
-                <span class="link-block">
-                  <a href="https://github.com/ControlGenAI/InnerControl" target="_blank"
-                    class="external-link button is-normal is-rounded is-dark">
-                    <span class="icon">
-                      <i class="fab fa-github"></i>
-                    </span>
-                    <span>Code</span>
-                  </a>
-                </span>
-                  </a>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.0/es5/tex-mml-chtml.js" crossorigin="anonymous"></script>
-
-
-  <section class="hero teaser">
-    <div class="container is-max-desktop">
-      <div class="hero-body">
-        <!-- Image with zero margin at the bottom -->
-        <img src="static/images/results.png"
-           class="interpolation-image"
-           alt="Interpolate start reference image."
-           style="width: 100%; max-width: 100%; height: auto;"/>
-      <!-- You can also use a fixed size like width: 800px if needed -->
-      <!-- Combined classes in the <h2> tag -->
-      </div>
-    </div>
-    <div class="container is-max-desktop">
-      <div class="columns is-centered has-text-centered">
-        <div class="column is-four-fifths">
-          <!-- Reduced margin for Abstract title -->
-          <h2 class="title is-3">Abstract</h2>
-          <div class="content has-text-justified">
-            <p>
-              Despite significant progress in text-to-image diffusion models, achieving precise spatial control over generated outputs remains challenging. One of the popular approaches for this task is ControlNet, which introduces an auxiliary conditioning module into the architecture. To improve alignment of the generated image and control, ControlNet++ proposes a cycle consistency loss to refine correspondence between controls and outputs, but restricts its application to the final denoising steps, while the main structure is introduced at an early generation stage. To address this issue, we suggest <strong>InnerControl</strong> — a training strategy that enforces spatial consistency across all diffusion steps. Specifically, we train lightweight control prediction probes — small convolutional networks — to reconstruct input control signals (e.g., edges, depth) from intermediate UNet features at every denoising step. We prove the efficiency of such models to extract signals even from very noisy latents and utilize these models to generate pseudo ground truth controls during training. The suggested approach enables an alignment loss that minimizes the difference between predicted and target condition throughout the whole diffusion process. Our experiments demonstrate that our method improves control alignment and fidelity of generation. By integrating this loss with established training techniques (e.g., ControlNet++), we achieve high performance across different condition methods such as edge and depth conditions.
-            </p>
-          </div>
-        </div>
-    </div>    
-    <div style="margin: 2em;"></div>
-    <!-- New Motivation Section -->
-    <div class="container is-max-desktop">
-      <div class="hero-body" style="padding: 10px 0;">
-        <h2 class="title is-4" style="margin-bottom: 5px; text-align: center;">Pipeline overview</h2>
-        <img src="static/images/pipeline.png"
-             class="interpolation-image"
-             alt="Interpolate start reference image."/>
-        <h2 class="subtitle has-text-justified is-size-6" style=" font-size: 20px;">
-          <b>Pipeline overview. We schematically illustrate the main idea of our <strong>InnerControl</strong> framework, highlighting the integration of the alignment loss. The main difference from ControlNet++ is <strong>InnerControl</strong>, which processes intermediate features extracted from the UNet decoder. These features are passed through an aggregation network to predict spatial control signals (e.g., depth or edge maps), which are then compared to the input control \( c_{\text{spatial}} \) to enforce consistency at every denoising step.
-    </div>
-    <div style="margin: 2em;"></div>
-<div style="margin: 2em;"></div>
-  <!-- End youtube video -->
-    <div class="hero-body">
-      <div class="container">
-        <!-- Paper video. -->
-        <h2 class="title is-3">Quantitative Results</h2> <!-- Results title, assuming it is left-aligned -->
-        <div style="margin: 2em;"></div>
-        <div class="container is-max-desktop">
-          <div class="hero-body" style="padding: 10px 0;">
-            <!-- Center-aligned title for better controllability and generation quality -->
-            <img src="./static/images/metrics.png"
-              class="interpolation-image"
-              alt="Interpolate start reference image."/>
-            <h4 class="subtitle has-text-centered is-size-6">
-              <p>
-                Unified comparison on the MultiGen‑20M benchmark. 
-                Controllability is measured by SSIM (<span style="color:green;">&uarr;</span>) for HED/LineArt and RMSE(<span style="color:red;">&darr;</span>) for Depth; 
-                fidelity by FID (<span style="color:red;">&darr;</span>); relevance by CLIP‑score(<span style="color:green;">&uarr;</span>). 
-                <sup>*</sup> – denotes training model from scratch using suggested in paper hyperparameters.
-              </p>
-            </h4>
-          </div>
-        </div>
-  
-        <div style="margin: 2em;"></div>
-        <!-- Second Qualitative Results aligned with Results -->
-        <h2 class="title is-3">Qualitative Results</h2> <!-- Results title, assuming it is left-aligned -->
-        <div style="margin: 2em;"></div>
-        <div class="container is-max-desktop">
-          <div class="hero-body" style="padding: 10px 0;">
-            <!-- Center-aligned title for better controllability and generation quality -->
-            <img src="./static/images/images.png"
-              class="interpolation-image"
-              alt="Interpolate start reference image."/>
-            <h4 class="subtitle has-text-centered is-size-6">
-                <b>Visualization of difference between extracted signal from intermediate features and input control after our training applied (<i>top</i>) and for standard ControlNet (<i>bottom</i>)
-            </h4>
-
-      </div>
-    </div>
-
-    <h2 class="title is-3">More Visualization Results</h2>
-    <div style="margin: 3.5em;"></div>
-    <div class="container is-max-desktop">
-      <div class="hero-body">
-        <!-- Title above buttons -->
-        <h4 class="title is-4 has-text-centered" style="width: 100%; margin-bottom: 1em;">Selected Control Type</h4>
-
-        <!-- Buttons -->
-        <div class="buttons are-medium is-centered" style="margin-bottom: 20px; width: 100%;">
-          <button class="button is-dark is-selected" onclick="showImage('depth')">Depth</button>
-          <button class="button is-dark" onclick="showImage('lineart')">LineArt</button>
-          <button class="button is-dark" onclick="showImage('hed')">HED</button>
-        </div>
-
-        <!-- Image below buttons -->
-        <figure class="has-text-centered">
-          <img id="dynamic-image" src="./static/images/appendix_depth.png" class="interpolation-image" style="max-width: 100%; height: auto;" alt="Selected Control Type Image"/>
-        </figure>
-      </div>
-    </div>
-
-    <div class="container is-max-desktop content" style="font-size: 16px;">
-      <h2 class="title is-3">BibTeX</h2>
-      If you find our work useful in your research, please consider citing:
-      <pre style="font-size: 12px;"><code>
-        @misc{konovalova2025heedinginnervoicealigning,
-          title={Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback}, 
-          author={Nina Konovalova and Maxim Nikolaev and Andrey Kuznetsov and Aibek Alanov},
-          year={2025},
-          eprint={2507.02321},
-          archivePrefix={arXiv},
-          primaryClass={cs.CV},
-          url={https://arxiv.org/abs/2507.02321}, 
-    }
-
-      </code></pre>
-    </div>
-
-
-    <!--End BibTex citation -->
-    
-    <footer class="footer">
-      <div class="container">
-        <div class="columns is-centered">
-          <div class="column is-10">
-            <div class="content" style="font-size: 12px;"> <!-- Adjusted font size here -->
-              <p>
-                This page was built using the
-                <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project
-                  Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
-                You are free to borrow the of this website, we
-                just ask that you link back to this page in the footer. <br />
-                This website is licensed under a
-                <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative Commons
-                  Attribution-ShareAlike 4.0 International
-                  License</a>.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </footer>
-</section>
-  <!-- Statcounter tracking code -->
-
-  <!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
-
-  <!-- End of Statcounter Code -->
-  <script src="https://unpkg.com/beerslider/dist/BeerSlider.js"></script>
   <script>
-    new BeerSlider(document.getElementById('slider1'), { start: '40' });
-    new BeerSlider(document.getElementById('slider2'), { start: '40' });
-    new BeerSlider(document.getElementById('slider3'), { start: '40' });
-    new BeerSlider(document.getElementById('slider4'), { start: '40' });
-    new BeerSlider(document.getElementById('slider5'), { start: '40' });
-    new BeerSlider(document.getElementById('slider6'), { start: '40' });
-    new BeerSlider(document.getElementById('slider7'), { start: '40' });
-    new BeerSlider(document.getElementById('slider8'), { start: '40' });
-    new BeerSlider(document.getElementById('slider9'), { start: '40' });
-    new BeerSlider(document.getElementById('slider10'), { start: '40' });
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] } };
   </script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+<!-- ======================================================================
+     Hero
+====================================================================== -->
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop has-text-centered">
+      <h1 class="title publication-title">
+        <span class="name">InnerControl</span>
+        <span class="tagline">Aligning ControlNet with Internal Feature Feedback</span>
+      </h1>
+      <span class="venue-tag">WACV 2027</span>
+
+      <div class="is-size-5 publication-authors">
+        <span class="author-block"><a href="https://scholar.google.com/citations?user=lD5JnEAAAAAJ" target="_blank" rel="noopener">Nina Konovalova</a><sup>1*</sup></span>
+        <span class="author-block">Ibragim Idrisov<sup>2*</sup></span>
+        <span class="author-block">Kamil Garifullin<sup>3</sup></span>
+        <!-- TODO: affiliation is "Institution" in the paper source; add it when known -->
+        <span class="author-block">Timofei Sobornov</span>
+        <span class="author-block"><a href="https://scholar.google.com/citations?user=MXJTRGoAAAAJ" target="_blank" rel="noopener">Aibek Alanov</a><sup>3</sup></span>
+      </div>
+      <div class="is-size-6 affiliations" style="margin-top: 0.5rem;">
+        <span class="author-block"><sup>1</sup>MBZUAI</span>
+        <span class="author-block"><sup>2</sup>Lomonosov Moscow State University</span>
+        <span class="author-block"><sup>3</sup>HSE University, FusionBrain Lab</span>
+      </div>
+      <div class="eql-cntrb" style="margin-top: 0.25rem;"><sup>*</sup>Equal contribution</div>
+
+      <div class="publication-links">
+        <a href="https://arxiv.org/pdf/2507.02321" target="_blank" rel="noopener" class="button is-dark is-rounded">
+          <span class="icon"><i class="fas fa-file-pdf"></i></span><span>Paper</span>
+        </a>
+        <a href="https://arxiv.org/abs/2507.02321" target="_blank" rel="noopener" class="button is-dark is-rounded">
+          <span class="icon"><i class="ai ai-arxiv"></i></span><span>arXiv</span>
+        </a>
+        <a href="https://github.com/ControlGenAI/InnerControl" target="_blank" rel="noopener" class="button is-dark is-rounded">
+          <span class="icon"><i class="fab fa-github"></i></span><span>Code</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Teaser
+====================================================================== -->
+<section class="section" style="padding-top: 0;">
+  <div class="container is-max-desktop">
+    <figure class="paper-figure" style="margin-top: 0;">
+      <img src="static/images/teaser.jpg" alt="Images generated by InnerControl with their input controls (HED, LineArt, depth)">
+      <figcaption>Images generated by InnerControl (top) from the input controls (bottom): HED, LineArt and depth.</figcaption>
+    </figure>
+    <div class="tldr">
+      <strong>TL;DR.</strong> ControlNet++ applies its reward loss only on the last 200 denoising steps, because one-step image
+      predictions from noisy latents are too blurry for an image-space reward model. InnerControl instead reads the control
+      signal directly from <em>intermediate diffusion features</em> with a small probe, and uses it as an alignment loss across
+      most of the denoising trajectory.
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Abstract
+====================================================================== -->
+<section class="section alt" id="abstract">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">Abstract</h2>
+    <div class="content has-text-justified">
+      <p>
+        Despite significant progress in text-to-image diffusion models, achieving precise spatial control over generated outputs
+        remains challenging. One of the popular approaches for this task is ControlNet, which introduces an auxiliary conditioning
+        module into the architecture. To improve alignment of the generation image and control, ControlNet++ proposes a cycle
+        consistency loss to refine correspondence between controls and outputs, but restricts its application to the final
+        denoising steps, while the main structure is introduced at an early stage of generation. To address this issue, we suggest
+        <strong>InnerControl</strong> — a training strategy that enforces spatial consistency across all diffusion steps.
+        Specifically, we train lightweight control prediction probes — small convolutional networks — to reconstruct input control
+        signals (e.g., edges, depth) from intermediate diffusion features at every denoising step. We prove the efficiency of such
+        models to extract signals even from very noisy latents and utilize these models to generate pseudo ground truth controls
+        during training. Suggested approach enables alignment loss that minimizes the difference between predicted and target
+        condition throughout the whole diffusion process. Our experiments demonstrate that our method improves control alignment
+        and fidelity of generation. Our approach can be applied to both UNet- and Transformer-based diffusion architectures and be
+        integrated with established training techniques (e.g., ControlNet++) to achieve high performance across different
+        condition methods such as edge, segmentation and depth conditions.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Motivation
+====================================================================== -->
+<section class="section" id="motivation">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">Why not extend the reward loss?</h2>
+    <div class="content has-text-justified">
+      <p>
+        ControlNet++ computes its reward on a one-step prediction of the clean image. Moving the reward loss to earlier, noisier
+        steps lowers RMSE but costs image quality: up to 400 steps the images stay clean, at 600 steps small artifacts appear, and
+        at 920 steps the model produces strong distortions such as unexpected lines and irregular edges.
+      </p>
+    </div>
+    <figure class="paper-figure">
+      <img src="static/images/reward_vs_alignment.jpg" alt="ControlNet++ reward loss over 200 to 920 steps versus InnerControl, and the RMSE-FID trade-off" loading="lazy">
+      <figcaption>
+        <em>Left:</em> reward loss alone (top) versus reward + alignment loss (bottom) as the loss is extended to earlier steps.
+        <em>Right:</em> extending the reward loss trades FID for RMSE.
+      </figcaption>
+    </figure>
+    <div class="content has-text-justified">
+      <p>
+        The reason is the input to the reward model. From roughly step 400 onward, one-step predictions become blurry and fall
+        outside the domain of a pretrained depth estimator such as DPT. A probe on intermediate features keeps predicting a
+        coherent depth map even at the noisiest steps.
+      </p>
+    </div>
+    <figure class="paper-figure narrow">
+      <img src="static/images/one_step_vs_features.jpg" alt="One-step predictions, DPT depth on them, and depth read from intermediate features across noise levels" loading="lazy">
+      <figcaption>
+        One-step prediction (top), DPT depth estimated from it (middle) and depth predicted from intermediate UNet features
+        (bottom), from low to high noise.
+      </figcaption>
+    </figure>
+    <figure class="paper-figure narrow">
+      <img src="static/images/losses.png" alt="RMSE of reward-model depth versus feature-probe depth across diffusion steps" loading="lazy">
+      <figcaption>
+        RMSE of depth from one-step predictions (green) and from intermediate features (blue) across diffusion steps.
+        <em>Left:</em> against the depth of the final SD1.5 image. <em>Right:</em> against the input control for ControlNet.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Method
+====================================================================== -->
+<section class="section alt" id="method">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">Method</h2>
+    <figure class="paper-figure narrow">
+      <img src="static/images/pipeline.png" alt="InnerControl pipeline: diffusion module with control block and an alignment module that predicts the control from intermediate features" loading="lazy">
+    </figure>
+    <div class="content has-text-justified">
+      <p>
+        A lightweight, timestep-conditioned probe \(\mathbb{H}(\cdot, t)\) aggregates intermediate denoiser features (UNet decoder
+        features, or normalization-modulated Transformer block features for SD3.5 and FLUX) with bottleneck layers and a learned
+        weighted sum, and predicts the spatial control. Its prediction
+        \(H_t = \mathbb{H}(\mathrm{ControlNet}(c_{\text{spatial}}, c_{\text{txt}}, x_t, t), t)\) is compared with the input control:
+      </p>
+      \[ \mathcal{L}_{\text{alignment}} = \mathcal{L}\left(c_{\text{spatial}},\, H_t\right) \]
+      <p>
+        We use MSE for depth and edges and cross-entropy for segmentation. The final objective combines the diffusion loss, the
+        ControlNet++ reward loss on the late steps and the alignment loss on a wide step range:
+      </p>
+      \[ \mathcal{L}_{\text{training}} = \mathcal{L}_{\text{diffusion}} + \alpha \cdot \mathcal{L}_{\text{reward}} + \beta \cdot \mathcal{L}_{\text{alignment}} \]
+      <p>
+        The alignment loss is applied over timesteps [0, 920] for depth, [0, 800] for HED, [0, 700] for LineArt and [450, 980]
+        for segmentation on UNet backbones, and over [400, 920] for SD3.5 and FLUX.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     Results
+====================================================================== -->
+<section class="section" id="results">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">Results</h2>
+
+    <h3 class="title is-5 subsection-title" style="margin-top: 0 !important;">Controllability and quality on MultiGen-20M and ADE20K</h3>
+    <div class="table-container">
+      <table class="table is-bordered is-hoverable results">
+        <thead>
+          <tr>
+            <th rowspan="2">Method</th><th rowspan="2">T2I model</th>
+            <th colspan="2">HED</th><th colspan="2">LineArt</th><th colspan="2">Depth</th><th colspan="2">Segmentation</th>
+          </tr>
+          <tr>
+            <th>SSIM ↑</th><th>FID ↓</th><th>SSIM ↑</th><th>FID ↓</th><th>RMSE ↓</th><th>FID ↓</th><th>mIoU ↑</th><th>FID ↓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>ControlNet</td><td>SDXL</td><td>—</td><td>—</td><td>—</td><td>—</td><td>40.00</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>T2I-Adapter</td><td>SDXL</td><td>—</td><td>—</td><td>0.639</td><td>—</td><td>39.75</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>T2I-Adapter</td><td>SD1.5</td><td>—</td><td>—</td><td>—</td><td>—</td><td>48.40</td><td>22.52</td><td>—</td><td>—</td></tr>
+          <tr><td>Gligen</td><td>SD1.4</td><td>0.563</td><td>—</td><td>—</td><td>—</td><td>38.83</td><td>18.36</td><td>—</td><td>—</td></tr>
+          <tr><td>Uni-ControlNet</td><td>SD1.5</td><td>0.691</td><td>17.1</td><td>—</td><td>—</td><td>40.65</td><td>20.27</td><td>—</td><td>—</td></tr>
+          <tr><td>UniControl</td><td>SD1.5</td><td>0.797</td><td>16.0</td><td>—</td><td>—</td><td>39.18</td><td>18.66</td><td>—</td><td>—</td></tr>
+          <tr><td>ControlNet</td><td>SD1.5</td><td>0.762</td><td>15.4</td><td>0.705</td><td>17.4</td><td>35.90</td><td class="best">17.76</td><td>32.60</td><td>41.1</td></tr>
+          <tr><td>ControlNet++</td><td>SD1.5</td><td class="second">0.822</td><td class="best">13.0</td><td class="second">0.840</td><td class="second">13.2</td><td>27.63</td><td>18.59</td><td class="second">38.08</td><td>39.04</td></tr>
+          <tr><td>Ctrl-U</td><td>SD1.5</td><td>0.820</td><td class="second">13.2</td><td>0.810</td><td class="best">12.5</td><td class="second">26.50</td><td>18.67</td><td>36.95</td><td class="best">35.00</td></tr>
+          <tr class="ours"><td>InnerControl (ours)</td><td>SD1.5</td><td class="best">0.826</td><td class="best">13.0</td><td class="best">0.850</td><td>13.5</td><td class="best">26.09</td><td class="second">18.29</td><td class="best">40.22</td><td class="second">37.65</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-caption">HED, LineArt and depth on MultiGen-20M, segmentation on ADE20K; guidance scale 7.5. <strong>Bold</strong>: best, <u>underline</u>: second best.</p>
+
+    <figure class="paper-figure">
+      <img src="static/images/qualitative.jpg" loading="lazy" alt="Qualitative comparison of InnerControl, ControlNet, ControlNet++ and Ctrl-U on LineArt, HED, depth and segmentation control">
+      <figcaption>
+        LineArt, HED, depth and segmentation control on SD1.5 with identical prompts and controls (guidance scale 7.5). Under each
+        generated image is the control extracted from it; red boxes mark misalignments with the input condition. ControlNet
+        produces noisy edges, ControlNet++ and Ctrl-U show depth artifacts, and the competitors misplace objects relative to the
+        segmentation mask.
+      </figcaption>
+    </figure>
+
+    <h3 class="title is-5 subsection-title">Larger backbones: SDXL, SD3.5 and FLUX.1 (depth)</h3>
+    <div class="table-container">
+      <table class="table is-bordered is-hoverable results">
+        <thead>
+          <tr><th>Method</th><th>Model</th><th>Guidance</th><th>RMSE ↓</th><th>FID ↓</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ControlNet++</td><td>SDXL</td><td>7.5</td><td class="second">30.24</td><td class="best">17.00</td></tr>
+          <tr class="ours"><td>InnerControl (ours)</td><td>SDXL</td><td>7.5</td><td class="best">28.31</td><td class="second">17.10</td></tr>
+          <tr><td>ControlNet++</td><td>SD3.5</td><td>4.5</td><td class="second">31.07</td><td class="best">14.24</td></tr>
+          <tr class="ours"><td>InnerControl (ours)</td><td>SD3.5</td><td>4.5</td><td class="best">30.31</td><td class="second">14.34</td></tr>
+          <tr><td>ControlNet++</td><td>FLUX.1</td><td>4.5</td><td class="second">29.22</td><td class="second">23.61</td></tr>
+          <tr class="ours"><td>InnerControl (ours)</td><td>FLUX.1</td><td>4.5</td><td class="best">27.91</td><td class="best">22.54</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-caption">The probe and loss are unchanged across backbones; for Transformers the probe reads a compact subset
+      of post-normalization features.</p>
+
+    <figure class="paper-figure">
+      <img src="static/images/flux_depth.jpg" alt="FLUX.1 depth control: input depth, ControlNet++ and InnerControl" loading="lazy">
+      <figcaption>FLUX.1 depth control. Rows: input depth condition, ControlNet++, InnerControl.</figcaption>
+    </figure>
+
+    <h3 class="title is-5 subsection-title">Native image-to-image models (FLUX depth benchmark)</h3>
+    <div class="table-container">
+      <table class="table is-bordered is-hoverable results">
+        <thead>
+          <tr><th>Method</th><th>RMSE ↓</th><th>FID ↓</th><th>CLIP ↑</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>FLUX.2 [klein] (9B)</td><td>46.06</td><td>26.15</td><td>29.16</td></tr>
+          <tr><td>UniPic2 (2B)</td><td>65.02</td><td>28.92</td><td>28.41</td></tr>
+          <tr><td>ControlNet++ (FLUX.1)</td><td>29.22</td><td>23.61</td><td class="best">29.22</td></tr>
+          <tr class="ours"><td>InnerControl (FLUX.1)</td><td class="best">27.91</td><td class="best">22.54</td><td>28.88</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-caption">Native I2I models receive the depth map as the reference image with the same prompt. They are far less
+      faithful to the geometric condition, so an explicit control branch is still needed at this precision.</p>
+  </div>
+</section>
+
+<!-- ======================================================================
+     What the probe sees
+====================================================================== -->
+<section class="section alt" id="probes">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">What the probes see</h2>
+    <div class="content has-text-justified">
+      <p>
+        For each control type: one-step prediction, the control estimated from the generated image, the reward-model estimate on
+        the one-step prediction, and the control predicted from intermediate features. At high noise levels the reward-model estimate
+        on the blurry one-step prediction breaks down, while the feature probe still gives a usable signal.
+      </p>
+    </div>
+    <div class="switcher" data-switcher>
+      <div class="buttons has-addons">
+        <button class="button is-dark" data-src="static/images/signal_depth.jpg" data-alt="Depth signals across diffusion steps" aria-pressed="true">Depth</button>
+        <button class="button" data-src="static/images/signal_hed.jpg" data-alt="HED signals across diffusion steps" aria-pressed="false">HED</button>
+        <button class="button" data-src="static/images/signal_lineart.jpg" data-alt="LineArt signals across diffusion steps" aria-pressed="false">LineArt</button>
+        <button class="button" data-src="static/images/signal_seg.jpg" data-alt="Segmentation signals across diffusion steps" aria-pressed="false">Segmentation</button>
+      </div>
+      <figure class="paper-figure switcher-figure">
+        <img src="static/images/signal_depth.jpg" alt="Depth signals across diffusion steps" loading="lazy">
+      </figure>
+    </div>
+
+    <figure class="paper-figure">
+      <img src="static/images/inner_difference.jpg" alt="Difference between depth read from intermediate features and the input control, InnerControl versus open-source ControlNet" loading="lazy">
+      <figcaption>Difference between depth read from intermediate features and the input control: ControlNet trained with
+        InnerControl (top) and the open-source ControlNet (bottom).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================================================================
+     More results
+====================================================================== -->
+<section class="section" id="gallery">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">More results</h2>
+    <div class="switcher" data-switcher>
+      <div class="buttons has-addons">
+        <button class="button is-dark" data-src="static/images/more_depth_sd15.jpg" data-alt="More InnerControl depth results on SD1.5" aria-pressed="true">Depth · SD1.5</button>
+        <button class="button" data-src="static/images/more_lineart_sd15.jpg" data-alt="More InnerControl LineArt results on SD1.5" aria-pressed="false">LineArt · SD1.5</button>
+        <button class="button" data-src="static/images/more_hed_sd15.jpg" data-alt="More InnerControl HED results on SD1.5" aria-pressed="false">HED · SD1.5</button>
+        <button class="button" data-src="static/images/more_depth_sd35.jpg" data-alt="More InnerControl depth results on SD3.5" aria-pressed="false">Depth · SD3.5</button>
+        <button class="button" data-src="static/images/more_depth_flux.jpg" data-alt="More InnerControl depth results on FLUX.1" aria-pressed="false">Depth · FLUX.1</button>
+      </div>
+      <figure class="paper-figure switcher-figure">
+        <img src="static/images/more_depth_sd15.jpg" alt="More InnerControl depth results on SD1.5" loading="lazy">
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     BibTeX
+====================================================================== -->
+<section class="section alt" id="bibtex">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 section-title">BibTeX</h2>
+    <div class="bibtex-wrap">
+      <button class="button is-small copy-button" type="button" id="copy-bibtex">
+        <span class="icon"><i class="far fa-copy"></i></span><span>Copy</span>
+      </button>
+      <pre><code id="bibtex-code">@inproceedings{konovalova2027innercontrol,
+  title     = {InnerControl: Aligning ControlNet with Internal Feature Feedback},
+  author    = {Konovalova, Nina and Idrisov, Ibragim and Garifullin, Kamil and Sobornov, Timofei and Alanov, Aibek},
+  booktitle = {Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+  year      = {2027}
+}</code></pre>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container is-max-desktop has-text-centered">
+    <p>
+      This page is based on the
+      <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank" rel="noopener">Academic Project Page Template</a>,
+      adapted from <a href="https://nerfies.github.io" target="_blank" rel="noopener">Nerfies</a>, and is licensed under
+      <a href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>.
+    </p>
+  </div>
+</footer>
 
 <script>
-  function showImage(type) {
-    const img = document.getElementById('dynamic-image');
-    img.src = `./static/images/appendix_${type}.png`;
-
-    // Optional: Highlight active button
-    document.querySelectorAll('.button').forEach(btn => {
-      btn.classList.remove('is-active');
+  document.querySelectorAll('[data-switcher]').forEach(function (switcher) {
+    var img = switcher.querySelector('.switcher-figure img');
+    var buttons = switcher.querySelectorAll('button[data-src]');
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        buttons.forEach(function (b) {
+          b.classList.remove('is-dark');
+          b.setAttribute('aria-pressed', 'false');
+        });
+        button.classList.add('is-dark');
+        button.setAttribute('aria-pressed', 'true');
+        img.src = button.dataset.src;
+        img.alt = button.dataset.alt;
+      });
     });
+  });
 
-    event.target.classList.add('is-active');
-  }
-</script>
-<script>
-  MathJax = {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']]
-    },
-    processEscapes: true
-  };
+  document.getElementById('copy-bibtex').addEventListener('click', function () {
+    var label = this.querySelector('span:last-child');
+    var text = document.getElementById('bibtex-code').textContent;
+    var done = function (ok) {
+      label.textContent = ok ? 'Copied' : 'Select and copy';
+      setTimeout(function () { label.textContent = 'Copy'; }, 1500);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      done(false);
+    }
+  });
 </script>
 </body>
-
 </html>

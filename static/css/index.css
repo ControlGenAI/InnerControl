@@ -1,153 +1,249 @@
+:root {
+  --accent: #3b6fd8;
+  --accent-soft: #eef3fd;
+  --ours: #f1f6ff;
+  --text: #2b2b2b;
+  --muted: #6b6b6b;
+  --line: #e4e6eb;
+  --bg-alt: #f8f9fb;
+}
+
 body {
   font-family: 'Noto Sans', sans-serif;
+  color: var(--text);
+  background: #fff;
 }
 
-
-.footer .icon-link {
-    font-size: 25px;
-    color: #000;
+.publication-title,
+.publication-authors,
+.section-title {
+  font-family: 'Google Sans', 'Noto Sans', sans-serif;
 }
 
-.link-block a {
-    margin-top: 5px;
-    margin-bottom: 5px;
-}
-
-.dnerf {
-  font-variant: small-caps;
-}
-
-
-.teaser .hero-body {
-  padding-top: 0;
-  padding-bottom: 3rem;
-}
-
-.teaser {
-  font-family: 'Google Sans', sans-serif;
-}
-
-
-.publication-title {
-}
-
-.publication-banner {
-  max-height: parent;
-
-}
-
-.publication-banner video {
-  position: relative;
-  left: auto;
-  top: auto;
-  transform: none;
-  object-fit: fit;
-}
-
-.publication-header .hero-body {
+/* ---------- hero ---------- */
+.hero .hero-body {
+  padding-bottom: 1.5rem;
 }
 
 .publication-title {
-    font-family: 'Google Sans', sans-serif;
+  line-height: 1.2;
+}
+
+.publication-title .name {
+  display: block;
+  font-size: 3.4rem;
+  letter-spacing: -0.5px;
+}
+
+.publication-title .tagline {
+  display: block;
+  font-size: 1.9rem;
+  font-weight: 500;
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 768px) {
+  .publication-title .name { font-size: 2.4rem; }
+  .publication-title .tagline { font-size: 1.35rem; }
+}
+
+.venue-tag {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.2rem 0.9rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 .publication-authors {
-    font-family: 'Google Sans', sans-serif;
-}
-
-.publication-venue {
-    color: #555;
-    width: fit-content;
-    font-weight: bold;
-}
-
-.publication-awards {
-    color: #ff3860;
-    width: fit-content;
-    font-weight: bolder;
-}
-
-.publication-authors {
+  margin-top: 1rem;
 }
 
 .publication-authors a {
-   color: hsl(204, 86%, 53%) !important;
+  color: var(--accent) !important;
 }
 
 .publication-authors a:hover {
-    text-decoration: underline;
+  text-decoration: underline;
 }
 
 .author-block {
   display: inline-block;
+  margin: 0 0.35rem;
 }
 
-.publication-banner img {
+.affiliations {
+  color: var(--muted);
 }
 
-.publication-authors {
-  /*color: #4286f4;*/
+.eql-cntrb {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
-.publication-video {
-    position: relative;
-    width: 100%;
-    height: 0;
-    padding-bottom: 56.25%;
-
-    overflow: hidden;
-    border-radius: 10px !important;
+.publication-links {
+  margin-top: 1.25rem;
 }
 
-.publication-video iframe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+.publication-links .button {
+  margin: 0.25rem;
 }
 
-.publication-body img {
+/* ---------- sections ---------- */
+.section {
+  padding: 3rem 1.5rem;
 }
 
-.results-carousel {
-  overflow: hidden;
+.section.alt {
+  background: var(--bg-alt);
 }
 
-.results-carousel .item {
-  margin: 5px;
-  overflow: hidden;
-  padding: 20px;
-  font-size: 0;
+.section-title {
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 1.5rem !important;
 }
 
-.results-carousel video {
-  margin: 0;
+.subsection-title {
+  font-family: 'Google Sans', 'Noto Sans', sans-serif;
+  margin-top: 2.25rem !important;
 }
 
-.slider-pagination .slider-page {
-  background: #000000;
+figure.paper-figure {
+  margin: 1.5rem 0;
 }
 
-.eql-cntrb { 
-  font-size: smaller;
+figure.paper-figure img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
 }
 
-
-
-table {
-    width: 80%;
-    border-collapse: collapse;
-    margin-left: auto;
-    margin-right: auto;
+figure.paper-figure figcaption {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin-top: 0.6rem;
+  text-align: center;
 }
-th, td {
-    border: 2px solid black;
-    padding: 8px;
-    text-align: center;
+
+.tldr {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 1rem 1.25rem;
+  border-radius: 0 8px 8px 0;
+  margin-top: 1.5rem;
 }
-caption {
-    caption-side: top;
-    font-weight: bold;
-    margin-bottom: 8px;
+
+/* ---------- tables ---------- */
+.table-container {
+  margin: 1rem 0 0.5rem;
+}
+
+table.results {
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+table.results th,
+table.results td {
+  text-align: center !important;
+  vertical-align: middle !important;
+  white-space: nowrap;
+}
+
+table.results th:first-child,
+table.results td:first-child {
+  text-align: left !important;
+}
+
+table.results thead th {
+  background: #f3f4f6;
+}
+
+table.results tr.ours td {
+  background: var(--ours);
+  font-weight: 600;
+}
+
+table.results tr.group td {
+  background: #fafafa;
+  color: var(--muted);
+  font-style: italic;
+  text-align: left !important;
+}
+
+table.results .best {
+  font-weight: 700;
+}
+
+table.results .second {
+  text-decoration: underline;
+}
+
+.table-caption {
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+/* ---------- image switchers ---------- */
+.switcher .buttons {
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.switcher .switcher-figure img {
+  max-height: 1100px;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* ---------- bibtex ---------- */
+.bibtex-wrap {
+  position: relative;
+}
+
+.bibtex-wrap pre {
+  background: #f5f6f8;
+  border-radius: 8px;
+  padding: 1.25rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+.copy-button {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+}
+
+.footer {
+  padding: 2rem 1.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+@media (max-width: 768px) {
+  .content.has-text-justified,
+  .content.has-text-justified p {
+    text-align: left !important;
+  }
+}
+
+figure.paper-figure.narrow {
+  max-width: 70%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 768px) {
+  figure.paper-figure.narrow {
+    max-width: 100%;
+  }
 }
