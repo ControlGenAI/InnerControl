@@ -1005,8 +1005,8 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--readout_path",
         type=str,
-        default='/home/jovyan/konovalova/controlnet_redout/weights/checkpoint_step_5000.pt',
-        help="Path to pretrained reaout model",
+        default=None,
+        help="Path to the pretrained alignment probe (aggregation network) checkpoint, e.g. checkpoints/aligning/depth.pt",
     )
     parser.add_argument(
         "--readout_type",
@@ -1819,8 +1819,6 @@ def main(args):
                 reward_loss = reward_loss.reshape_as(timestep_mask)
                 reward_loss = (timestep_mask * reward_loss).sum() / (timestep_mask.sum() + 1e-10)
                 loss = pretrain_loss + reward_loss * args.grad_scale
-                assert args.grad_scale == 0.5
-                #assert loss == pretrain_loss
                 
 
                 """

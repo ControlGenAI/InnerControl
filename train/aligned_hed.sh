@@ -27,11 +27,11 @@ accelerate launch --config_file "train/config.yml" \
  --checkpointing_steps=1000 \
  --grad_scale=1.0 \
  --use_ema \
- --aligning_alpha=1 \
+ --aligning_alpha=0.1 \
  --validation_steps=1000 \
  --timestep_sampling_start=0 \
  --timestep_sampling_end=1000 \
  --min_timestep_rewarding=0 \
- --max_timestep_rewarding=200 \
+ --max_timestep_rewarding=400 \
  --readout_path 'checkpoints/aligning/hed.pt' \
- --max_timestep_readout=920 \
+ --max_timestep_readout=800 \

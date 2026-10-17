@@ -1,106 +1,158 @@
-# [Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback]()
+# InnerControl: Aligning ControlNet with Internal Feature Feedback
 
-<a href="https://arxiv.org/abs/2507.02321"><img src="https://img.shields.io/badge/arXiv-2507.02321-b31b1b.svg" height=22.5><a>
-<a href="inference.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" height=22.5></a>
-<a href="https://controlgenai.github.io/InnerControl/"><img src="https://img.shields.io/badge/Project-Website-blue" height=22.5><a>
-[![License](https://img.shields.io/github/license/AIRI-Institute/al_toolbox)](./LICENSE.txt)
+**WACV 2027**
+
+[Nina Konovalova](https://scholar.google.com/citations?user=lD5JnEAAAAAJ)<sup>1\*</sup>,
+Ibragim Idrisov<sup>2\*</sup>,
+Kamil Garifullin<sup>3</sup>,
+Timofei Sobornov,
+[Aibek Alanov](https://scholar.google.com/citations?user=MXJTRGoAAAAJ)<sup>3</sup>
+
+<sup>1</sup>MBZUAI &nbsp; <sup>2</sup>Lomonosov Moscow State University &nbsp; <sup>3</sup>HSE University, FusionBrain Lab
+<br><sup>\*</sup>Equal contribution
+
+<a href="https://arxiv.org/abs/2507.02321"><img src="https://img.shields.io/badge/arXiv-2507.02321-b31b1b.svg" height=22.5></a>
+<a href="https://controlgenai.github.io/InnerControl/"><img src="https://img.shields.io/badge/Project-Website-blue" height=22.5></a>
+<a href="./LICENSE.txt"><img src="https://img.shields.io/badge/License-MIT-green.svg" height=22.5></a>
 
 <p align="center">
-  <img src="images/results.png" 
-       alt="Method Diagram" 
-       width="1000" 
-       title="System Architecture Overview">
+  <img src="images/teaser.jpg" alt="InnerControl generations with their input controls (HED, LineArt, depth)" width="1000">
 </p>
 
+> **TL;DR.** ControlNet++ applies its reward loss only on the last 200 denoising steps: at noisier steps the one-step image prediction is too blurry for an image-space reward model, and extending the reward causes artifacts. InnerControl trains small probes that read the control signal (depth, edges, segmentation) **directly from intermediate diffusion features**, and uses them as an alignment loss across most of the denoising trajectory.
 
-Despite significant progress in text-to-image diffusion models, achieving precise spatial control over generated outputs remains challenging. One of the popular approaches for this task is ControlNet, which introduces an auxiliary conditioning module into the architecture. To improve alignment of the generated image and control, ControlNet++ proposes a cycle consistency loss to refine correspondence between controls and outputs, but restricts its application to the final denoising steps, while the main structure is introduced at an early generation stage. To address this issue, we suggest **InnerControl** -- a training strategy that enforces spatial consistency across all diffusion steps. Specifically, we train lightweight control prediction probes — small convolutional networks — to reconstruct input control signals (e.g., edges, depth) from intermediate UNet features at every denoising step. We prove the efficiency of such models to extract signals even from very noisy latents and utilize these models to generate pseudo ground truth controls during training. Suggested approach enables alignment loss that minimizes the difference between predicted and target condition throughout the whole diffusion process. Our experiments demonstrate that our method improves control alignment and fidelity of generation. By integrating this loss with established training techniques (e.g., ControlNet++), we achieve high performance across different condition methods such as edge and depth conditions.
+## Abstract
 
-## Environments
+Despite significant progress in text-to-image diffusion models, achieving precise spatial control over generated outputs remains challenging. One of the popular approaches for this task is ControlNet, which introduces an auxiliary conditioning module into the architecture. To improve alignment of the generation image and control, ControlNet++ proposes a cycle consistency loss to refine correspondence between controls and outputs, but restricts its application to the final denoising steps, while the main structure is introduced at an early stage of generation. To address this issue, we suggest **InnerControl** — a training strategy that enforces spatial consistency across all diffusion steps. Specifically, we train lightweight control prediction probes — small convolutional networks — to reconstruct input control signals (e.g., edges, depth) from intermediate diffusion features at every denoising step. We prove the efficiency of such models to extract signals even from very noisy latents and utilize these models to generate pseudo ground truth controls during training. Suggested approach enables alignment loss that minimizes the difference between predicted and target condition throughout the whole diffusion process. Our experiments demonstrate that our method improves control alignment and fidelity of generation. Our approach can be applied to both UNet- and Transformer-based diffusion architectures and be integrated with established training techniques (e.g., ControlNet++) to achieve high performance across different condition methods such as edge, segmentation and depth conditions.
+
+## Method
+
+<p align="center">
+  <img src="images/pipeline.png" alt="InnerControl pipeline" width="900">
+</p>
+
+A lightweight, timestep-conditioned probe $\mathbb{H}(\cdot, t)$ aggregates intermediate denoiser features (UNet decoder features or Transformer block features) and predicts the spatial control. The alignment loss compares this prediction with the input control $c_{\text{spatial}}$ at every sampled timestep:
+
+$$\mathcal{L}_{\text{training}} = \mathcal{L}_{\text{diffusion}} + \alpha \cdot \mathcal{L}_{\text{reward}} + \beta \cdot \mathcal{L}_{\text{alignment}}$$
+
+The reward loss (ControlNet++) stays on the late, low-noise steps where one-step predictions are sharp; the alignment loss covers the early steps where spatial structure is formed. Extending the reward loss alone to early steps lowers RMSE but introduces visible artifacts and a higher FID:
+
+<p align="center">
+  <img src="images/reward_vs_alignment.jpg" alt="Reward loss on early steps introduces artifacts; reward + alignment does not" width="1000">
+</p>
+
+## Results
+
+<p align="center">
+  <img src="images/qualitative.jpg" alt="Qualitative comparison of InnerControl with ControlNet, ControlNet++ and Ctrl-U" width="1000">
+</p>
+
+LineArt, HED, depth and segmentation control on SD1.5, compared with ControlNet, ControlNet++ and Ctrl-U. Under each generated image is the control extracted from it; red boxes mark misalignments with the input condition.
+
+<p align="center">
+  <img src="images/flux_depth.jpg" alt="FLUX.1 depth control: condition, ControlNet++, InnerControl" width="1000">
+</p>
+
+Depth control on FLUX.1: input condition, ControlNet++ and InnerControl.
+
+Quantitative results for SD1.5, SDXL, SD3.5 and FLUX.1, ablations and user studies are in the paper and on the [project page](https://controlgenai.github.io/InnerControl/).
+
+## Environment
+
 ```bash
-git clone https://github.com/control/InnerControl.git
+git clone <this-repository-url> InnerControl
+cd InnerControl
 pip3 install -r requirements.txt
-pip3 install clean-fid
-pip3 install torchmetrics
+pip3 install clean-fid torchmetrics
 ```
 
-## 📌 Data Preperation
-**All the organized data has been put on Huggingface and will be automatically downloaded during training or evaluation.** You can preview it in advance to check the data samples and disk space occupied with following links.
-|   Task    | Training Data 🤗 | Evaluation Data 🤗 |
-|:----------:|:------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------|
-|  LineArt, Hed   | [Data](https://huggingface.co/datasets/limingcv/MultiGen-20M_train), 1.14 TB | [Data](https://huggingface.co/datasets/limingcv/MultiGen-20M_canny_eval), 2.25GB |
-|  Depth   |  [Data](https://huggingface.co/datasets/limingcv/MultiGen-20M_depth), 1.22 TB | [Data](https://huggingface.co/datasets/limingcv/MultiGen-20M_depth_eval), 2.17GB |
+## Data preparation
 
-## Quickstart
+All data is hosted on Hugging Face and is downloaded automatically during training or evaluation. You can preview the samples and disk usage in advance:
 
-### Jupyter notebook
-We provide example of applying our pretrained model to generate images in the [notebook]().
+| Task | Training data 🤗 | Evaluation data 🤗 |
+|:--:|:--|:--|
+| LineArt, HED | [MultiGen-20M_train](https://huggingface.co/datasets/limingcv/MultiGen-20M_train), 1.14 TB | [MultiGen-20M_canny_eval](https://huggingface.co/datasets/limingcv/MultiGen-20M_canny_eval), 2.25 GB |
+| Depth | [MultiGen-20M_depth](https://huggingface.co/datasets/limingcv/MultiGen-20M_depth), 1.22 TB | [MultiGen-20M_depth_eval](https://huggingface.co/datasets/limingcv/MultiGen-20M_depth_eval), 2.17 GB |
 
-### 📌 Method diagram 
+## Training
 
-<p align="center">
-  <img src="images/pipeline.png" 
-       alt="Method Diagram" 
-       width="1000" 
-       title="System Architecture Overview">
-</p>
+The paper runs were trained on 8 H100 GPUs (about 6 hours per run); the scripts use 8 processes with batch size 8 × gradient accumulation 4 = effective batch 256. Change the number of GPUs in [`train/config.yml`](train/config.yml); with fewer GPUs, lower the batch size and increase gradient accumulation.
 
+The alignment loss needs a pretrained alignment probe for each task. The scripts expect it at `checkpoints/aligning/{depth,hed,lineart}.pt` (`--readout_path`). **Probe checkpoints are not released yet.** The probe architecture is in [`train/aggregation_network.py`](train/aggregation_network.py) and follows [Readout Guidance](https://github.com/google-research/readout_guidance).
 
-### 📌 Training
-By default, we conduct our training on 8 A100-80G GPUs. You can change number of utilized gpu number in [train/config.yaml](train/config.yml) file. If you lack sufficient computational resources, you can reduce the batch size while increasing gradient accumulation.
-
-We can directly perform reward-alignment fine-tuning.
+The paper trains in two stages of 10k iterations each: the public ControlNet is first fine-tuned with the standard diffusion loss, then training continues with reward + alignment loss. For depth, stage 1 is [`train/depth_tuning.sh`](train/depth_tuning.sh); set `CONTROLNET_DIR` in the `aligned_*.sh` script to its output. As shipped, the `aligned_*.sh` scripts start from the public `lllyasviel/control_v11*` ControlNets.
 
 ```bash
-bash train/aligned_depth.sh
+bash train/depth_tuning.sh      # stage 1 (depth)
+bash train/aligned_depth.sh     # stage 2
 bash train/aligned_hed.sh
 bash train/aligned_linedrawing.sh
 ```
 
+Main arguments of [`train/reward_control_aligned.py`](train/reward_control_aligned.py):
 
-### 📌 Evaluation
-### Checkpoints Preparation
-Please download the model weights and put them into each subset of `checkpoints`:
-|   model    | ControlNet weights  | Align model                                                                 |
-|:----------:|:--------------:|:----------------------------------------------------------------------|
-|  LineArt   | [model](https://drive.google.com/drive/folders/1_K9NlB4iqZOJMxKM8IYFY_AhNLZyYkYU?usp=sharing) | [model](https://drive.google.com/file/d/156qGQPnAXAgZTm-t9Z-JYPJUkeocQmfk/view?usp=sharing)
-|  Depth   |  [model](https://drive.google.com/drive/folders/12DmxpUXQTOw7L73kYU6yPTp1QlblgCh4?usp=sharing) | [model](https://drive.google.com/file/d/1bweES5Sf23mcEtdwLH0dVzWujIhFXWVf/view?usp=sharing)
-|  Hed (SoftEdge)   | [model](https://drive.google.com/drive/folders/1LAQ0iIT6YsIWg_rAf1gKXriKUPRrIajo?usp=sharing) |[model](https://drive.google.com/file/d/1HElEu7mDoNvqAkHlGBjhPLrCiPBJMye9/view?usp=sharing) 
-|
+| Argument | Meaning |
+|:--|:--|
+| `--min_timestep_rewarding`, `--max_timestep_rewarding` | timestep range of the reward loss |
+| `--min_timestep_readout`, `--max_timestep_readout` | timestep range of the alignment loss |
+| `--grad_scale` | reward-loss weight $\alpha$ |
+| `--aligning_alpha` | alignment-loss weight $\beta$ |
+| `--readout_path` | alignment probe checkpoint |
 
-### 📌 Evaluate Controllability
-Please make sure the folder directory is consistent with the test script, then you can eval each model by:
+Settings used in the paper (already set in the scripts):
+
+| Task | Reward weight $\alpha$ | Reward steps | Alignment weight $\beta$ | Alignment steps |
+|:--|:--:|:--:|:--:|:--:|
+| Depth | 0.5 | [0, 400] | 1.0 | [0, 920] |
+| HED | 1.0 | [0, 400] | 0.1 | [0, 800] |
+| LineArt | 10.0 | [0, 200] | 2.0 | [0, 700] |
+
+The final ControlNet is saved to `OUTPUT_DIR` and its EMA copy to `OUTPUT_DIR_ema`.
+
+## Evaluation
+
+Set `CONTROLNET_DIR` in each script to your trained ControlNet (by default the EMA output of the matching training script), then run:
+
 ```bash
-bash eval/eval_depth.sh
-bash eval/eval_hed.sh
-bash eval/eval_linedrawing.sh
+bash eval/eval_depth.sh     # RMSE
+bash eval/eval_hed.sh       # SSIM
+bash eval/eval_lineart.sh   # SSIM
 ```
 
-### 📌 Evaluate CLIP-Score and FID
-To evaluate CLIP and FID:
-
+CLIP score and FID of the images generated by `eval/eval_depth.sh` (keep `CONTROLNET_DIR`, `SCALE` and `NUM_STEPS` in sync; for FID, first save the evaluation-set images as `<idx>.png` into `REAL_IMAGE_DIR`):
 
 ```bash
 bash eval/eval_clip.sh
 bash eval/eval_fid.sh
 ```
 
-For FID evaluation you should additionally save dataset images into separate folder.
+## Inference
 
+[`inference.ipynb`](inference.ipynb) generates images with a trained SD1.5 ControlNet. Set `controlnet_path` to your checkpoint directory.
 
-## 🙏 Acknowledgements
-We sincerely thank the [Huggingface](https://huggingface.co), [ControlNet](https://github.com/lllyasviel/ControlNet), [ControlNet++](https://github.com/liming-ai/ControlNet_Plus_Plus) and [Readout Guidance](https://github.com/google-research/readout_guidance) communities for their open source code and contributions. Our project would not be possible without these amazing works.
+## Repository layout
+
+```text
+train/   training (reward + alignment loss), alignment probe, feature hooks
+eval/    image generation for evaluation and metrics
+mmlab/   MMSegmentation model configs
+images/  figures for this README
+```
+
+## Acknowledgements
+
+We thank the [Hugging Face](https://huggingface.co), [ControlNet](https://github.com/lllyasviel/ControlNet), [ControlNet++](https://github.com/liming-ai/ControlNet_Plus_Plus), [Readout Guidance](https://github.com/google-research/readout_guidance) and [Diffusion Hyperfeatures](https://github.com/diffusion-hyperfeatures/diffusion_hyperfeatures) communities for their open-source code.
 
 ## Citation
-If our work assists your research, feel free to give us a star ⭐ or cite us using:
 
-```
-@misc{konovalova2025heedinginnervoicealigning,
-      title={Heeding the Inner Voice: Aligning ControlNet Training via Intermediate Features Feedback}, 
-      author={Nina Konovalova and Maxim Nikolaev and Andrey Kuznetsov and Aibek Alanov},
-      year={2025},
-      eprint={2507.02321},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2507.02321}, 
+If our work assists your research, please cite:
+
+```bibtex
+@inproceedings{konovalova2027innercontrol,
+  title     = {InnerControl: Aligning ControlNet with Internal Feature Feedback},
+  author    = {Konovalova, Nina and Idrisov, Ibragim and Garifullin, Kamil and Sobornov, Timofei and Alanov, Aibek},
+  booktitle = {Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+  year      = {2027}
 }
 ```

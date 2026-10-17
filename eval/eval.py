@@ -199,20 +199,12 @@ def main(args):
                     negative_prompt=['worst quality, low quality'] *  args.batch_size
                 ).images
             else:
-
-                os.makedirs(f"{save_dir}/readout/group_{0}/", exist_ok=True)
-                readout_params = {
-                    "readout_save": f"{save_dir}/readout/group_{0}/{uid}",
-                    "readout_path": "/home/jovyan/konovalova/controlnet_redout/weights/checkpoint_step_5000.pt",
-                    "readout_type": "attn",
-                }
                 images = pipe(
                     prompt=prompts,
                     image=conditions,
                     num_inference_steps=args.num_inference_steps,
                     guidance_scale=args.guidance_scale,
                     negative_prompt=['worst quality, low quality'] *  args.batch_size,
-                    **readout_params,
                 ).images
 
             if args.task_name in ['lineart', 'hed']:

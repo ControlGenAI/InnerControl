@@ -1,5 +1,6 @@
-export CONTROLNET_DIR="/home/jovyan/konovalova/controlnet_redout/reward_400_readout_reproduce_920_seed_42_new_start_ema"  # Eval our ControlNet++
-# How many PUs and processes you want to use for evaluation.
+# Path to the ControlNet weights (local path or Hugging Face id); EMA weights are saved to <OUTPUT_DIR>_ema
+export CONTROLNET_DIR="work_dirs/MultiGen/depth_reward_aligned_ema"
+# How many GPUs and processes you want to use for evaluation.
 export NUM_GPUS=4
 # Guidance scale and inference steps
 export SCALE=7.5

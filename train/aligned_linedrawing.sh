@@ -24,15 +24,15 @@ accelerate launch --config_file "train/config.yml" \
  --lr_scheduler="constant_with_warmup" \
  --lr_warmup_steps=10 \
  --checkpointing_steps=1000 \
- --grad_scale=1.0 \
+ --grad_scale=10.0 \
  --use_ema \
- --aligning_alpha=1 \
+ --aligning_alpha=2.0 \
  --validation_steps=5000 \
  --timestep_sampling_start=0 \
  --timestep_sampling_end=1000 \
  --min_timestep_rewarding=0 \
  --max_timestep_rewarding=200 \
  --readout_path 'checkpoints/aligning/lineart.pt' \
- --max_timestep_readout=920 \
+ --max_timestep_readout=700 \
 
 

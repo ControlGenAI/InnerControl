@@ -1,6 +1,6 @@
 # Path to the controlnet weight (can be huggingface or local path)
 
-export CONTROLNET_DIR='/home/jovyan/konovalova/controlnet_redout/reward_hed_readout_920_400_new_loss_ema'
+export CONTROLNET_DIR="work_dirs/MultiGen/hed_reward_aligned_ema"
 # How many GPUs and processes you want to use for evaluation.
 export NUM_GPUS=4
 # Guidance scale and inference steps

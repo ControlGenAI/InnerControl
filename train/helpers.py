@@ -348,7 +348,6 @@ def get_edits(config, device, dtype):
 
 def load_aggregation_network(aggregation_config, device, dtype):
     weights_path = aggregation_config["aggregation_ckpt"]
-    #weights_path = '/home/jovyan/konovalova/controlnet_redout/weights/checkpoint_step_5000.pt'
     state_dict = torch.load(weights_path)
     config = state_dict["config"]
     aggregation_kwargs = config.get("aggregation_kwargs", {})
