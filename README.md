@@ -4,11 +4,11 @@
 
 [Nina Konovalova](https://scholar.google.com/citations?user=lD5JnEAAAAAJ)<sup>1\*</sup>,
 Ibragim Idrisov<sup>2\*</sup>,
-Kamil Garifullin<sup>3</sup>,
-Timofei Sobornov,
-[Aibek Alanov](https://scholar.google.com/citations?user=MXJTRGoAAAAJ)<sup>3</sup>
+Kamil Garifullin<sup>3,4</sup>,
+Timofei Sobornov<sup>3</sup>,
+[Aibek Alanov](https://scholar.google.com/citations?user=MXJTRGoAAAAJ)<sup>3,4</sup>
 
-<sup>1</sup>MBZUAI &nbsp; <sup>2</sup>Lomonosov Moscow State University &nbsp; <sup>3</sup>HSE University, FusionBrain Lab
+<sup>1</sup>MBZUAI &nbsp; <sup>2</sup>Lomonosov Moscow State University &nbsp; <sup>3</sup>HSE University &nbsp; <sup>4</sup>FusionBrain Lab
 <br><sup>\*</sup>Equal contribution
 
 <a href="https://arxiv.org/abs/2507.02321"><img src="https://img.shields.io/badge/arXiv-2507.02321-b31b1b.svg" height=22.5></a>
@@ -19,7 +19,7 @@ Timofei Sobornov,
   <img src="images/teaser.jpg" alt="InnerControl generations with their input controls (HED, LineArt, depth)" width="1000">
 </p>
 
-> **TL;DR.** ControlNet++ applies its reward loss only on the last 200 denoising steps: at noisier steps the one-step image prediction is too blurry for an image-space reward model, and extending the reward causes artifacts. InnerControl trains small probes that read the control signal (depth, edges, segmentation) **directly from intermediate diffusion features**, and uses them as an alignment loss across most of the denoising trajectory.
+> ControlNet++ applies its reward loss only on the last 200 denoising steps: at noisier steps the one-step image prediction is too blurry for an image-space reward model, and extending the reward causes artifacts. InnerControl trains small probes that read the control signal (depth, edges, segmentation) **directly from intermediate diffusion features**, and uses them as an alignment loss across most of the denoising trajectory.
 
 ## Abstract
 
